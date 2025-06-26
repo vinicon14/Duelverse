@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 11%; /* Very Dark Blue #0F172A */
+    --foreground: 210 40% 96%; /* Light Gray/Off-white */
+
+    --muted: 222 47% 18%; /* Slightly darker muted elements */
+    --muted-foreground: 215 30% 65%; /* Muted text */
+
+    --popover: 222 47% 9%; /* Darker popover background */
+    --popover-foreground: 210 40% 96%;
+
+    --card: 222 47% 14%; /* Card background, slightly lighter than main bg */
+    --card-foreground: 210 40% 96%;
+
+    --border: 222 47% 25%; /* Border color */
+    --input: 222 47% 20%; /* Input background */
+
+    --primary: 226 65% 52%; /* Deep Blue #1E3A8A (adjusted for visibility) */
+    --primary-foreground: 210 40% 98%; /* Light text on primary */
+
+    --secondary: 222 47% 30%; /* A medium dark blue for secondary elements */
+    --secondary-foreground: 210 40% 96%;
+
+    --accent: 260 48% 65%; /* Purple #7E57C2 (adjusted for visibility) */
+    --accent-foreground: 210 40% 98%; /* Light text on accent */
+
+    --destructive: 0 72% 51%; /* Standard Red */
+    --destructive-foreground: 0 0% 98%;
+
+    --ring: 226 65% 58%; /* Ring color related to primary */
+
+    --radius: 0.5rem;
+
+    /* Sidebar specific colors, maintaining a dark theme consistency */
+    --sidebar-background: 222 47% 10%;
+    --sidebar-foreground: 210 40% 85%;
+    --sidebar-primary: 226 65% 52%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 222 47% 20%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 47% 22%;
+    --sidebar-ring: 226 65% 58%;
+
+    --chart-1: 226 65% 52%; /* Primary */
+    --chart-2: 260 48% 65%; /* Accent */
+    --chart-3: 210 40% 70%; 
+    --chart-4: 190 50% 60%;
+    --chart-5: 30 70% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    @apply antialiased;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+}
