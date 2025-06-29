@@ -1,0 +1,52 @@
+{
+  "users": [
+    {
+      "id": "641c8c35-9e72-4ce0-bbba-aeb6dfc34493",
+      "username": "Duelverse",
+      "displayName": "Duelverse",
+      "country": "Brasil",
+      "email": "duelverse@duelverse.app",
+      "score": 1000,
+      "profilePictureUrl": "",
+      "decklistImageUrl": "",
+      "friendUsernames": [],
+      "lastActiveAt": 1751231895333,
+      "isVerified": false,
+      "isJudge": false,
+      "isBanned": false,
+      "isPro": false,
+      "isCoAdmin": false
+    },
+    {
+      "id": "b3e3e3e3-3e3e-4e3e-8e3e-3e3e3e3e3e3e",
+      "username": "Vinicon14",
+      "displayName": "Vinicon14",
+      "country": "Brasil",
+      "email": "vinicon14@duelverse.app",
+      "score": 1000,
+      "profilePictureUrl": "",
+      "decklistImageUrl": "",
+      "friendUsernames": [],
+      "lastActiveAt": 1751231786128,
+      "isVerified": true,
+      "isJudge": true,
+      "isBanned": false,
+      "isPro": true,
+      "isCoAdmin": true
+    }
+  ],
+  "adminNotifications": [
+    "New User: Duelverse"
+  ],
+  "serverStatus": "online",
+  "advertisements": {
+    "enabled": false,
+    "videos": []
+  },
+  "popupBanner": {
+    "enabled": false,
+    "imageUrl": "",
+    "targetUrl": ""
+  },
+  "duelInvitations": []
+}

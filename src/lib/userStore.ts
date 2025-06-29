@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 
 // Path to the JSON file that will act as our simple database
-const dbPath = path.join(process.cwd(), 'private/database.json');
+const dbPath = path.join(process.cwd(), 'database.json');
 
 interface Database {
   users: User[];
