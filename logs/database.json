@@ -1,0 +1,10 @@
+{
+  "users": [],
+  "adminNotifications": [],
+  "serverStatus": "online",
+  "advertisements": {
+    "enabled": false,
+    "videos": []
+  },
+  "duelInvitations": []
+}

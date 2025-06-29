@@ -1,0 +1,39 @@
+{
+  "eventType": "user_updated",
+  "timestamp": "2025-06-29T00:32:17.891Z",
+  "context": {
+    "summary": "User profile updated for Vinicon14"
+  },
+  "before": {
+    "id": "admin-id",
+    "username": "Vinicon14",
+    "displayName": "Vinicon14",
+    "password": "vv12122020",
+    "country": "BR",
+    "friendUsernames": [],
+    "profilePictureUrl": "",
+    "decklistImageUrl": "",
+    "lastActiveAt": 1751157137725,
+    "isVerified": true,
+    "isJudge": true,
+    "isPro": true,
+    "isCoAdmin": true,
+    "isBanned": false
+  },
+  "after": {
+    "id": "admin-id",
+    "username": "Vinicon14",
+    "displayName": "Vinicon14",
+    "password": "vv12122020",
+    "country": "BR",
+    "friendUsernames": [],
+    "profilePictureUrl": "",
+    "decklistImageUrl": "",
+    "lastActiveAt": 1751157137890,
+    "isVerified": true,
+    "isJudge": true,
+    "isPro": true,
+    "isCoAdmin": true,
+    "isBanned": false
+  }
+}
