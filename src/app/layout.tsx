@@ -1,6 +1,6 @@
+
 "use client";
 
-import { useEffect } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
@@ -8,6 +8,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { AudioControlProvider } from '@/contexts/AudioControlContext';
 import { AdProvider } from '@/contexts/AdContext';
 import AdManager from '@/components/AdManager';
+import PopupBanner from '@/components/ads/PopupBanner'; // Import the new component
 
 export default function RootLayout({
   children,
@@ -43,6 +44,7 @@ export default function RootLayout({
               {children}
               <Toaster />
               <AdManager />
+              <PopupBanner /> {/* Add the component here */}
             </AudioControlProvider>
           </AdProvider>
         </AuthProvider>

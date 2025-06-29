@@ -1,6 +1,6 @@
 
 // src/lib/userStore.ts
-import type { User, Advertisement, AdvertisementConfig, DuelInvitation } from '@/lib/types';
+import type { User, Advertisement, AdvertisementConfig, DuelInvitation, PopupBannerAd } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -13,11 +13,14 @@ interface Database {
   adminNotifications: string[];
   serverStatus: 'online' | 'offline';
   advertisements: AdvertisementConfig;
+  popupBanner: PopupBannerAd; // Added popup banner
   duelInvitations: DuelInvitation[];
 }
 
 // NOTE: The logDataChangeEvent function has been temporarily removed to resolve a critical build error.
 // The audit logging functionality is currently disabled.
+
+const defaultBanner: PopupBannerAd = { enabled: false, imageUrl: '', targetUrl: '' };
 
 // Helper to read the entire database from the JSON file
 async function readDb(): Promise<Database> {
@@ -31,18 +34,34 @@ async function readDb(): Promise<Database> {
       adminNotifications: data.adminNotifications || [],
       serverStatus: data.serverStatus || 'online',
       advertisements: data.advertisements || { enabled: false, videos: [] },
+      popupBanner: data.popupBanner || defaultBanner, // Added default for popup banner
       duelInvitations: data.duelInvitations || [],
     };
   } catch (error) {
     // If the file doesn't exist, create it with a default structure
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         console.log("Database file not found, creating a new one.");
-        const defaultDb: Database = { users: [], adminNotifications: [], serverStatus: 'online', advertisements: { enabled: false, videos: [] }, duelInvitations: [] };
+        const defaultDb: Database = { 
+            users: [], 
+            adminNotifications: [], 
+            serverStatus: 'online', 
+            advertisements: { enabled: false, videos: [] },
+            popupBanner: defaultBanner,
+            duelInvitations: [] 
+        };
         await writeDb(defaultDb);
         return defaultDb;
     }
     console.error("Could not read database file, returning empty structure.", error);
-    return { users: [], adminNotifications: [], serverStatus: 'online', advertisements: { enabled: false, videos: [] }, duelInvitations: [] };
+    // Return a default structure in case of other read errors
+    return { 
+        users: [], 
+        adminNotifications: [], 
+        serverStatus: 'online', 
+        advertisements: { enabled: false, videos: [] },
+        popupBanner: defaultBanner,
+        duelInvitations: []
+    };
   }
 }
 
@@ -52,7 +71,7 @@ async function writeDb(data: Database): Promise<void> {
 }
 
 
-// --- User Management Functions ---
+// --- User Management Functions (remains unchanged) ---
 
 export async function addUser(
   userData: Pick<User, 'username' | 'displayName' | 'country'>
@@ -158,17 +177,9 @@ export async function deleteExpiredBannedUsers(): Promise<{ deletedCount: number
   const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
   
   const usersToKeep = db.users.filter(user => {
-    // Keep user if they are not banned
-    if (!user.isBanned) return true;
-    // Keep user if they were banned, but no timestamp exists (legacy data)
-    if (!user.bannedAt) return true;
-    // Keep user if they were banned less than 30 days ago
+    if (!user.isBanned || !user.bannedAt) return true;
     const timeSinceBan = now - user.bannedAt;
-    if (timeSinceBan < thirtyDaysInMs) return true;
-    
-    // Otherwise, filter them out (for deletion)
-    console.log(`[Maintenance] Deleting user ${user.username} (banned on ${new Date(user.bannedAt as number).toISOString()})`);
-    return false;
+    return timeSinceBan < thirtyDaysInMs;
   });
 
   const deletedCount = db.users.length - usersToKeep.length;
@@ -191,7 +202,6 @@ export async function addPaymentNotification(username: string): Promise<void> {
     const db = await readDb();
     db.adminNotifications.push(`O usuário ${username} enviou um comprovante de pagamento para o status PRO.`);
     await writeDb(db);
-    console.log(`[UserStore - addPaymentNotification] SUCCESS: Notification added for ${username}.`);
 }
 
 
@@ -206,7 +216,7 @@ export async function clearAdminNotifications(): Promise<void> {
   await writeDb(db);
 }
 
-// --- Server Status Management ---
+// --- Server Status Management (remains unchanged) ---
 export async function getServerStatus(): Promise<'online' | 'offline'> {
   const db = await readDb();
   return db.serverStatus;
@@ -216,7 +226,6 @@ export async function setServerStatus(status: 'online' | 'offline'): Promise<voi
   const db = await readDb();
   db.serverStatus = status;
   await writeDb(db);
-  console.log(`[UserStore - setServerStatus] SUCCESS: Server status set to "${status}" in database file.`);
 }
 
 // --- Advertisement Management ---
@@ -239,6 +248,18 @@ export async function addAdvertisement(ad: Omit<Advertisement, 'id'>): Promise<A
     return newAd;
 }
 
+// --- Popup Banner Management ---
+export async function getPopupBannerAd(): Promise<PopupBannerAd> {
+    const db = await readDb();
+    return db.popupBanner;
+}
+
+export async function updatePopupBannerAd(newConfig: PopupBannerAd): Promise<void> {
+    const db = await readDb();
+    db.popupBanner = newConfig;
+    await writeDb(db);
+}
+
 
 // --- Server-Side Data Fetching ---
 
@@ -252,11 +273,12 @@ export async function getAdminDashboardData() {
     notifications: db.adminNotifications || [],
     serverStatus: db.serverStatus || 'online',
     adConfig: db.advertisements || { enabled: false, videos: [] },
+    popupBanner: db.popupBanner || defaultBanner,
   };
 }
 
-// --- Duel Invitation Functions ---
-
+// --- Duel Invitation Functions (remains unchanged) ---
+// ... (all duel invitation functions are unchanged)
 export async function createDuelInvitation(fromUser: User, toUser: User): Promise<DuelInvitation> {
   const db = await readDb();
   

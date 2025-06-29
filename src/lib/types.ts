@@ -166,6 +166,12 @@ export interface AdvertisementConfig {
   videos: Advertisement[];
 }
 
+export interface PopupBannerAd {
+  enabled: boolean;
+  imageUrl: string;
+  targetUrl: string;
+}
+
 
 // --- Duel Invitation Types ---
 export type DuelInvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired' | 'error';
