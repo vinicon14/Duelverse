@@ -1,0 +1,39 @@
+{
+  "eventType": "user_updated",
+  "timestamp": "2025-06-29T00:36:39.077Z",
+  "context": {
+    "summary": "User profile updated for Duelverse"
+  },
+  "before": {
+    "id": "user_1751157398806_evxllkw",
+    "username": "Duelverse",
+    "displayName": "Duelverse",
+    "country": "Brasil",
+    "password": "vv12122020",
+    "score": 0,
+    "friendUsernames": [],
+    "profilePictureUrl": "",
+    "decklistImageUrl": "",
+    "lastActiveAt": 1751157398806,
+    "isVerified": false,
+    "isJudge": false,
+    "isBanned": false,
+    "isCoAdmin": false
+  },
+  "after": {
+    "id": "user_1751157398806_evxllkw",
+    "username": "Duelverse",
+    "displayName": "Duelverse",
+    "country": "Brasil",
+    "password": "vv12122020",
+    "score": 0,
+    "friendUsernames": [],
+    "profilePictureUrl": "",
+    "decklistImageUrl": "",
+    "lastActiveAt": 1751157399077,
+    "isVerified": false,
+    "isJudge": false,
+    "isBanned": false,
+    "isCoAdmin": false
+  }
+}

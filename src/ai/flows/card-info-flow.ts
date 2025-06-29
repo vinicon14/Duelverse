@@ -1,77 +1,109 @@
 
 'use server';
 /**
- * @fileOverview A Yu-Gi-Oh! card information AI agent.
- *
- * - getCardInfo - A function that retrieves information about a Yu-Gi-Oh! card.
- * - CardInfoInput - The input type for the getCardInfo function.
- * - CardInfoOutput - The return type for the getCardInfo function.
+ * @fileOverview A Yu-Gi-Oh! card information AI agent that uses AI to correct user input and fetches data and descriptions in the user's language, with robust fallbacks and translation.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import axios from 'axios';
 
-const CardInfoInputSchema = z.object({
-  cardName: z.string().describe('The name of the Yu-Gi-Oh! card to get information about.'),
-});
+// --- Schemas ---
+const CardInfoInputSchema = z.object({ cardName: z.string().describe('The name of the Yu-Gi-Oh! card to get information about.') });
 export type CardInfoInput = z.infer<typeof CardInfoInputSchema>;
 
 const CardInfoOutputSchema = z.object({
-  name: z.string().describe("The official name of the card."),
-  type: z.string().describe("The card type (e.g., Effect Monster, Spell Card, Trap Card)."),
-  attribute: z.string().optional().describe("The attribute of the monster (e.g., DARK, LIGHT), if applicable."),
-  level: z.number().optional().describe("The level or rank of the monster, if applicable."),
-  monsterType: z.string().optional().describe("The monster type (e.g., Spellcaster, Dragon), if applicable."),
-  atk: z.number().optional().describe("The Attack points of the monster, if applicable. Should be a number or null if not applicable."),
-  def: z.number().optional().describe("The Defense points of the monster, if applicable. Should be a number or null if not applicable."),
-  effect: z.string().describe("The card's effect text or description."),
-  visualDescription: z.string().describe("A brief description of the card's artwork or visual appearance.")
+  name: z.string(), type: z.string(), attribute: z.string().optional(), level: z.number().optional(),
+  monsterType: z.string().optional(), atk: z.number().optional(), def: z.number().optional(),
+  effect: z.string(), visualDescription: z.string(), imageUrl: z.string().optional()
 });
 export type CardInfoOutput = z.infer<typeof CardInfoOutputSchema>;
 
+// --- Helper Functions ---
+const langCodeToName = (code: string): string => {
+    const map: { [key: string]: string } = { 'pt': 'Portuguese', 'es': 'Spanish', 'de': 'German', 'fr': 'French', 'it': 'Italian' };
+    return map[code] || 'English';
+};
+
+// --- AI Flows ---
+const LanguageDetectionOutputSchema = z.object({ languageCode: z.string().length(2) });
+const languageDetectionPrompt = ai.definePrompt({ name: 'languageDetectionPrompt', input: { schema: CardInfoInputSchema }, output: { schema: LanguageDetectionOutputSchema }, prompt: `Detect the primary language of the text. Respond with only the two-letter ISO 639-1 code (e.g., en, pt, es). Input: {{{cardName}}}` });
+const languageDetectionFlow = ai.defineFlow({ name: 'languageDetectionFlow', inputSchema: CardInfoInputSchema, outputSchema: LanguageDetectionOutputSchema }, async (input) => (await languageDetectionPrompt(input)).output || { languageCode: 'en' });
+
+const CorrectedNameOutputSchema = z.object({ correctedName: z.string().describe('The official English name of the card.') });
+const nameCorrectionPrompt = ai.definePrompt({ name: 'nameCorrectionPrompt', input: { schema: CardInfoInputSchema }, output: { schema: CorrectedNameOutputSchema }, prompt: `You are a Yu-Gi-Oh! card name expert. A user provided a name that might be misspelled, incomplete, or in another language. Determine the single, most likely, official English card name. Return only the name. Examples: "mago negro" -> "Dark Magician", "Ocultador de efeitos" -> "Effect Veiler". Input: {{{cardName}}}` });
+const nameCorrectionFlow = ai.defineFlow({ name: 'nameCorrectionFlow', inputSchema: CardInfoInputSchema, outputSchema: CorrectedNameOutputSchema }, async (input) => (await nameCorrectionPrompt(input)).output || { correctedName: input.cardName });
+
+const VisualDescriptionOutputSchema = z.object({ visualDescription: z.string() });
+const visualDescriptionPrompt = ai.definePrompt({ name: 'visualDescriptionPrompt', input: { schema: z.object({ cardName: z.string() }) }, output: { schema: VisualDescriptionOutputSchema }, prompt: `Describe the artwork of the Yu-Gi-Oh! card named {{{cardName}}}. Be brief and descriptive. Respond in English.` });
+const visualDescriptionFlow = ai.defineFlow({ name: 'visualDescriptionFlow', inputSchema: z.object({ cardName: z.string() }), outputSchema: VisualDescriptionOutputSchema }, async (input) => (await visualDescriptionPrompt(input)).output || { visualDescription: "No visual description available." });
+
+const TranslationInputSchema = z.object({ text: z.string(), targetLanguage: z.string() });
+const TranslationOutputSchema = z.object({ translatedText: z.string() });
+const translationPrompt = ai.definePrompt({ name: 'translationPrompt', input: { schema: TranslationInputSchema }, output: { schema: TranslationOutputSchema }, prompt: `Translate the following text into {{{targetLanguage}}}. Return only the translated text. Text: {{{text}}}` });
+const translationFlow = ai.defineFlow({ name: 'translationFlow', inputSchema: TranslationInputSchema, outputSchema: TranslationOutputSchema }, async (input) => (await translationPrompt(input)).output || { translatedText: input.text });
+
+// --- Main Function with Full Translation and Fallback ---
 export async function getCardInfo(input: CardInfoInput): Promise<CardInfoOutput> {
-  return cardInfoFlow(input);
-}
+  const [langResponse, correctedNameResponse] = await Promise.all([ languageDetectionFlow(input), nameCorrectionFlow(input) ]);
+  const detectedLang = langResponse.languageCode;
+  const correctedCardName = correctedNameResponse.correctedName;
 
-const prompt = ai.definePrompt({
-  name: 'cardInfoPrompt',
-  input: {schema: CardInfoInputSchema},
-  output: {schema: CardInfoOutputSchema},
-  prompt: `You are an expert Yu-Gi-Oh! card oracle. A player is asking for information about a specific card.
-Card Name: {{{cardName}}}
+  let cardDataFromApi;
+  let wasFallbackNeeded = false;
+  const supportedLangs = ['pt', 'fr', 'de', 'it', 'es'];
+  const cardNameForApi = encodeURIComponent(correctedCardName);
 
-Provide the following details for this card:
-- Official Name: The exact and official name of the card.
-- Card Type: The specific type of card (e.g., Effect Monster, Synchro Monster, Spell Card, Continuous Trap Card).
-- Attribute: If the card is a monster, its attribute (e.g., DARK, LIGHT, EARTH, WATER, FIRE, WIND, DIVINE). If not applicable, omit this field.
-- Level or Rank: If the card is a monster, its Level (for Main Deck, Fusion, Synchro, Ritual monsters) or Rank (for Xyz monsters) or Link Rating (for Link monsters). If not applicable, omit this field.
-- Monster Type: If the card is a monster, its type (e.g., Spellcaster, Dragon, Warrior, Fiend, etc.). If not applicable, omit this field.
-- ATK: If the card is a monster, its Attack points. Provide as a number. If it has '?' or is not applicable, you may omit this field or use a special value if the schema allows, but prefer to omit.
-- DEF: If the card is a monster, its Defense points. Provide as a number. If it has '?' or is not applicable, you may omit this field or use a special value if the schema allows, but prefer to omit. For Link Monsters, this field is not applicable.
-- Card Effect: The full, official effect text of the card. If the card is a Normal Monster, state it's a Normal Monster and provide its flavor text if any.
-- Visual Description: A brief but descriptive summary of the card's artwork.
-
-Ensure your response strictly adheres to the requested output schema. If a field like ATK, DEF, Level, Attribute, or Monster Type is not applicable for the given card (e.g., ATK/DEF for a Spell Card), you MUST omit the field or ensure it's explicitly optional in the schema and handle it accordingly. For ATK/DEF, if they are variable (like '?'), describe this in the effect text and omit the numeric ATK/DEF fields.`,
-});
-
-const cardInfoFlow = ai.defineFlow(
-  {
-    name: 'cardInfoFlow',
-    inputSchema: CardInfoInputSchema,
-    outputSchema: CardInfoOutputSchema,
-  },
-  async (input: CardInfoInput) => {
-    const {output} = await prompt(input);
-    if (!output) {
-        throw new Error("Failed to get card information from AI.");
+  try {
+    let apiUrl = `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${cardNameForApi}`;
+    if (supportedLangs.includes(detectedLang)) apiUrl += `&language=${detectedLang}`;
+    const response = await axios.get(apiUrl);
+    if (!response.data?.data?.[0]) throw new Error("Card not found with specified language.");
+    cardDataFromApi = response.data.data[0];
+  } catch (error) {
+    wasFallbackNeeded = true;
+    try {
+      const fallbackUrl = `https://db.ygoprodeck.com/api/v7/cardinfo.php?name=${cardNameForApi}`;
+      const response = await axios.get(fallbackUrl);
+      if (!response.data?.data?.[0]) throw new Error(`Card "${correctedCardName}" not found even in English.`);
+      cardDataFromApi = response.data.data[0];
+    } catch (finalError) {
+      throw new Error(`Não foi possível encontrar a carta "${input.cardName}". A IA tentou corrigir para "${correctedCardName}", mas não obteve sucesso na busca.`);
     }
-    // Ensure ATK/DEF are numbers or undefined, not strings like "N/A"
-    if (output.atk !== undefined && typeof output.atk !== 'number') {
-        output.atk = undefined;
-    }
-    if (output.def !== undefined && typeof output.def !== 'number') {
-        output.def = undefined;
-    }
-    return output;
   }
-);
+
+  const englishVisualDescription = (await visualDescriptionFlow({ cardName: cardDataFromApi.name })).visualDescription;
+  let effectText = cardDataFromApi.desc;
+  let visualDescription = englishVisualDescription;
+
+  if (detectedLang !== 'en' && wasFallbackNeeded) {
+    const targetLanguageName = langCodeToName(detectedLang);
+    console.log(`Fallback occurred. Translating texts to ${targetLanguageName}.`);
+    try {
+        const [effectTranslation, visualTranslation] = await Promise.all([
+            translationFlow({ text: effectText, targetLanguage: targetLanguageName }),
+            translationFlow({ text: englishVisualDescription, targetLanguage: targetLanguageName })
+        ]);
+        effectText = effectTranslation.translatedText;
+        visualDescription = visualTranslation.translatedText;
+    } catch (translationError) {
+        console.error("Could not translate texts, falling back to English.", translationError);
+    }
+  } else if (detectedLang !== 'en') {
+      // This handles the case where the API returns official data in the correct language, but we still need to translate the AI-generated visual description.
+      const targetLanguageName = langCodeToName(detectedLang);
+      try {
+          const visualTranslation = await translationFlow({ text: englishVisualDescription, targetLanguage: targetLanguageName });
+          visualDescription = visualTranslation.translatedText;
+      } catch (translationError) {
+          console.error("Could not translate visual description, falling back to English.", translationError);
+      }
+  }
+  
+  return {
+    name: cardDataFromApi.name, type: cardDataFromApi.type, effect: effectText, attribute: cardDataFromApi.attribute,
+    monsterType: cardDataFromApi.race, level: cardDataFromApi.level || cardDataFromApi.rank || cardDataFromApi.linkval,
+    atk: cardDataFromApi.atk, def: cardDataFromApi.def, imageUrl: cardDataFromApi.card_images?.[0]?.image_url,
+    visualDescription: visualDescription,
+  };
+}

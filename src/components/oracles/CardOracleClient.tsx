@@ -129,7 +129,7 @@ export default function CardOracleClient() {
                 <div className="md:flex">
                     <div className="md:w-1/3 p-4 flex flex-col justify-center items-center bg-muted/30 space-y-4">
                         <Image
-                            src={`https://placehold.co/300x438.png?text=${encodeURIComponent(cardData.name.substring(0,15))}`}
+                            src={cardData.imageUrl || `https://placehold.co/300x438.png?text=${encodeURIComponent(cardData.name.substring(0,15))}`}
                             alt={`Arte de ${cardData.name}`}
                             width={300}
                             height={438}

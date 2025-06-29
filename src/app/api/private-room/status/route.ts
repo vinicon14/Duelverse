@@ -1,8 +1,8 @@
 
-// src/app/api/private-room/status/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
 import { privateGames, userPrivateGameMap } from '@/lib/matchmakingStore';
 import type { PrivateRoomStatusResponse } from '@/lib/types';
+import { getUserById } from '@/lib/userStore';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +16,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: 'error', message: 'ID do usuário não fornecido.' } as PrivateRoomStatusResponse, { status: 400 });
     }
     
+    // Fetch user from the database
+    const user = await getUserById(userId);
+    if (!user) {
+      console.warn(`[API /private-room/status] User with ID "${userId}" not found.`);
+      return NextResponse.json({ status: 'error', message: 'Usuário não encontrado.' } as PrivateRoomStatusResponse, { status: 404 });
+    }
+
     const clientRoomId = clientRoomIdInput?.trim().toUpperCase();
     const actualRoomId = clientRoomId || userPrivateGameMap.get(userId);
     console.log(`[API /private-room/status] Effective RoomId for lookup: "${actualRoomId}" (Client provided: "${clientRoomId}", Map derived: "${userPrivateGameMap.get(userId)}")`);

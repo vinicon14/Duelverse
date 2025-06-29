@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useAudioControl } from '@/contexts/AudioControlContext';
 import { Button } from '@/components/ui/button';
-import { LogIn, LogOut, UserPlus, UserCircle, Settings, Play, Pause, ShieldCheck, Crown, UserCog, Users, LifeBuoy } from 'lucide-react';
+import { LogIn, LogOut, UserPlus, UserCircle, Settings, Play, Pause, ShieldCheck, Crown, UserCog, Users, LifeBuoy, GitBranch, Loader2 } from 'lucide-react';
 import { LogoIcon } from '@/components/icons/LogoIcon';
 import {
   DropdownMenu,
@@ -22,19 +22,35 @@ import { Badge } from '@/components/ui/badge';
 
 const ADMIN_USERNAME = 'vinicon14';
 
+function VersionDisplay() {
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/version/current')
+      .then(res => res.json())
+      .then(data => setVersion(data.version || 'unknown'))
+      .catch(() => setVersion('unknown'));
+  }, []);
+
+  return (
+    <div className="px-2 py-1.5 text-xs text-muted-foreground flex items-center justify-center">
+      {version ? (
+        <>
+          <GitBranch className="h-3 w-3 mr-1.5" /> 
+          <span>{version}</span>
+        </>
+      ) : (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      )}
+    </div>
+  );
+}
+
+
 export default function SiteHeader() {
   const router = useRouter();
   const { user, logout, loading } = useAuth();
   const { isPlaying, togglePlayPause, isReady: isAudioReady } = useAudioControl();
-  const [isDarkMode, setIsDarkMode] = useState(true); 
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && document.documentElement.classList.contains('dark')) {
-      setIsDarkMode(true);
-    } else {
-      setIsDarkMode(false);
-    }
-  }, []);
   
   const getInitials = (name: string = "") => {
     return name.split(' ').map(n => n[0]).join('').toUpperCase() || 'DV';
@@ -64,7 +80,7 @@ export default function SiteHeader() {
                     <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                       <Avatar className="h-10 w-10 border-2 border-primary hover:border-accent transition-colors">
                         <AvatarImage 
-                          src={user.profilePictureUrl || `https://placehold.co/100x100.png?text=${getInitials(user.displayName)}`} 
+                          src={user.profilePictureUrl || ''} 
                           alt={user.displayName || 'User Avatar'} 
                           data-ai-hint="avatar person" 
                         />
@@ -126,6 +142,8 @@ export default function SiteHeader() {
                       <LogOut className="mr-2 h-4 w-4" />
                       <span>Sair</span>
                     </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                     <VersionDisplay />
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (

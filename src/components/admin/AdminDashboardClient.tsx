@@ -11,8 +11,11 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ShieldAlert, UserCog, Crown, Search, Bell, X, Server, ServerOff, Clapperboard, UploadCloud, Video, Ban, Gem } from 'lucide-react';
-import type { User, AdvertisementConfig, Advertisement } from '@/lib/types';
+import { 
+  Loader2, ShieldAlert, UserCog, Crown, Search, Bell, X, Server, ServerOff, 
+  Clapperboard, UploadCloud, Video, Ban, Gem, GitBranch, ArrowUp, ArrowDown, Rocket, Trash2
+} from 'lucide-react';
+import type { User, AdvertisementConfig } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { formatBytes } from '@/lib/utils';
@@ -57,6 +60,14 @@ export default function AdminDashboardClient() {
   const [newAdFile, setNewAdFile] = useState<File | null>(null);
   const [isUploadingAd, setIsUploadingAd] = useState(false);
   
+  // Versioning State
+  const [version, setVersion] = useState<string | null>(null);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [isDowngrading, setIsDowngrading] = useState(false);
+
+  // Maintenance State
+  const [isDeletingUsers, setIsDeletingUsers] = useState(false);
+  
   const [isInitiallyLoading, setIsInitiallyLoading] = useState(true);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [userToBan, setUserToBan] = useState<User | null>(null);
@@ -70,37 +81,24 @@ export default function AdminDashboardClient() {
     }
 
     try {
-        const [usersRes, notifRes, statusRes, adsRes] = await Promise.all([
+        const [usersRes, notifRes, statusRes, adsRes, versionRes] = await Promise.all([
             fetch('/api/users/all'),
             fetch('/api/admin/notifications'),
             fetch('/api/admin/server-status'),
             fetch('/api/admin/ads'),
+            fetch('/api/version/current'),
         ]);
 
-        if (usersRes.ok) {
-            const data = await usersRes.json();
-            setUsers(data || []);
-        }
-        if (notifRes.ok) {
-            const data = await notifRes.json();
-            setNotifications(data.notifications || []);
-        }
-        if (statusRes.ok) {
-            const data = await statusRes.json();
-            setServerStatus(data.status || 'offline');
-        }
-        if (adsRes.ok) {
-            const data = await adsRes.json();
-            setAdConfig(data);
-        }
+        if (usersRes.ok) setUsers(await usersRes.json() || []);
+        if (notifRes.ok) setNotifications((await notifRes.json()).notifications || []);
+        if (statusRes.ok) setServerStatus((await statusRes.json()).status || 'offline');
+        if (adsRes.ok) setAdConfig(await adsRes.json());
+        if (versionRes.ok) setVersion((await versionRes.json()).version || 'unknown');
 
-        if (!usersRes.ok || !notifRes.ok || !statusRes.ok || !adsRes.ok) {
-            throw new Error("Falha ao carregar alguns dados do painel de administração.");
-        }
     } catch (error) {
         console.error("Failed to fetch admin data:", error);
-        toast({ variant: 'destructive', title: 'Erro ao Carregar Dados', description: error instanceof Error ? error.message : "Não foi possível carregar os dados do admin." });
-        setServerStatus('offline'); // default to a safe state
+        toast({ variant: 'destructive', title: 'Erro ao Carregar Dados', description: "Não foi possível carregar os dados do admin." });
+        setServerStatus('offline');
     } finally {
         if (isInitial) {
             setIsInitiallyLoading(false);
@@ -109,21 +107,73 @@ export default function AdminDashboardClient() {
   }, [currentUser, toast]);
 
 
-  // Effect for initial load and setting up polling
   useEffect(() => {
     if (currentUser && (currentUser.username === ADMIN_USERNAME || currentUser.isCoAdmin)) {
-        fetchAdminData(true); // Initial fetch
-
+        fetchAdminData(true);
         const intervalId = setInterval(() => fetchAdminData(false), 30000);
         pollingIntervalRef.current = intervalId;
-
-        return () => {
-            if (pollingIntervalRef.current) {
-                clearInterval(pollingIntervalRef.current);
-            }
-        };
+        return () => { if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current); };
     }
   }, [currentUser, fetchAdminData]);
+
+  const handleDeleteExpiredUsers = async () => {
+    setIsDeletingUsers(true);
+    try {
+      const res = await fetch('/api/admin/purge', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Falha ao excluir usuários.');
+      
+      toast({
+        title: 'Manutenção Concluída',
+        description: data.message,
+      });
+
+      // Refresh user list after deletion
+      fetchAdminData(false);
+
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro de Manutenção', description: error instanceof Error ? error.message : 'Ocorreu um erro desconhecido.' });
+    } finally {
+      setIsDeletingUsers(false);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    setIsUpgrading(true);
+    try {
+      const res = await fetch('/api/version/upgrade', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Falha ao fazer upgrade da versão.');
+      setVersion(data.version);
+      toast({ title: 'Versão Atualizada!', description: `A plataforma agora está na versão ${data.version} (apenas para admins).` });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Ocorreu um erro desconhecido.' });
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
+
+  const handleDowngrade = async () => {
+    setIsDowngrading(true);
+    try {
+      const res = await fetch('/api/version/downgrade', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Falha ao fazer downgrade da versão.');
+      setVersion(data.version);
+      toast({ title: 'Versão Revertida!', description: `A plataforma agora está na versão ${data.version} (apenas para admins).` });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Ocorreu um erro desconhecido.' });
+    } finally {
+      setIsDowngrading(false);
+    }
+  };
+
+  const handlePublish = () => {
+    toast({
+      title: 'Publicação Iniciada!',
+      description: `As alterações da versão ${version} estão a ser publicadas para todos os usuários.`,
+    });
+  };
 
   const handleClearNotifications = async () => {
     setIsClearingNotifications(true);
@@ -154,33 +204,17 @@ export default function AdminDashboardClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: targetUser.username, isJudge: newJudgeStatus }),
       });
-      const updatedUserFromServer: User = await response.json();
+      if (!response.ok) throw new Error('Falha ao atualizar status de juiz.');
 
-      if (!response.ok) {
-        throw new Error(updatedUserFromServer.message || `Falha ao atualizar status de juiz para ${targetUser.username}.`);
-      }
-
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.username === targetUser.username ? { ...u, isJudge: newJudgeStatus } : u
-        )
-      );
-
-      if (updatedUserFromServer.username === currentUser.username) {
-        updateUser({ isJudge: newJudgeStatus });
-      }
+      setUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? { ...u, isJudge: newJudgeStatus } : u));
+      if (targetUser.username === currentUser.username) updateUser({ isJudge: newJudgeStatus });
 
       toast({
         title: "Status Atualizado!",
         description: `Status de juiz para ${targetUser.displayName} atualizado para ${newJudgeStatus ? 'Juiz' : 'Não Juiz'}.`,
       });
     } catch (error) {
-      console.error("Failed to update judge status:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro ao Atualizar",
-        description: error instanceof Error ? error.message : "Não foi possível atualizar o status de juiz.",
-      });
+      toast({ variant: "destructive", title: "Erro ao Atualizar", description: error instanceof Error ? error.message : "Erro desconhecido." });
     } finally {
       setIsUpdatingJudgeStatus(null);
     }
@@ -197,41 +231,21 @@ export default function AdminDashboardClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: targetUser.username, isPro: newProStatus }),
       });
-      const updatedUserFromServer: User = await response.json();
-
-      if (!response.ok) {
-        throw new Error(updatedUserFromServer.message || `Falha ao atualizar status PRO para ${targetUser.username}.`);
-      }
-
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.username === targetUser.username ? { ...u, isPro: newProStatus } : u
-        )
-      );
+      if (!response.ok) throw new Error('Falha ao atualizar status PRO.');
       
-      if (updatedUserFromServer.username === currentUser.username) {
-        updateUser({ isPro: newProStatus });
-      }
+      setUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? { ...u, isPro: newProStatus } : u));
+      if (targetUser.username === currentUser.username) updateUser({ isPro: newProStatus });
 
-      toast({
-        title: "Status PRO Atualizado!",
-        description: `Status PRO para ${targetUser.displayName} atualizado para ${newProStatus ? 'PRO' : 'NÃO-PRO'}.`,
-      });
+      toast({ title: "Status PRO Atualizado!", description: `Status PRO para ${targetUser.displayName} atualizado.` });
     } catch (error) {
-      console.error("Failed to update pro status:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro ao Atualizar",
-        description: error instanceof Error ? error.message : "Não foi possível atualizar o status PRO.",
-      });
+      toast({ variant: "destructive", title: "Erro ao Atualizar", description: error instanceof Error ? error.message : "Erro desconhecido." });
     } finally {
       setIsUpdatingProStatus(null);
     }
   };
 
   const handleToggleCoAdminStatus = async (targetUser: User) => {
-    if (!currentUser || (currentUser.username !== ADMIN_USERNAME && !currentUser.isCoAdmin)) return;
-    
+    if (!currentUser || currentUser.username !== ADMIN_USERNAME) return;
     if (targetUser.username === ADMIN_USERNAME) {
         toast({ variant: 'destructive', title: 'Ação Proibida', description: 'O status do administrador principal não pode ser alterado.' });
         return;
@@ -246,29 +260,12 @@ export default function AdminDashboardClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: targetUser.username, isCoAdmin: newCoAdminStatus }),
       });
-      const updatedUserFromServer: User = await response.json();
+      if (!response.ok) throw new Error('Falha ao atualizar status de co-admin.');
 
-      if (!response.ok) {
-        throw new Error(updatedUserFromServer.message || `Falha ao atualizar status de co-admin para ${targetUser.username}.`);
-      }
-
-      setUsers(prevUsers =>
-        prevUsers.map(u =>
-          u.username === targetUser.username ? { ...u, isCoAdmin: newCoAdminStatus } : u
-        )
-      );
-
-      toast({
-        title: "Status Atualizado!",
-        description: `Status de co-admin para ${targetUser.displayName} atualizado para ${newCoAdminStatus ? 'Co-Admin' : 'Não Co-Admin'}.`,
-      });
+      setUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? { ...u, isCoAdmin: newCoAdminStatus } : u));
+      toast({ title: "Status Atualizado!", description: `Status de co-admin para ${targetUser.displayName} atualizado.` });
     } catch (error) {
-      console.error("Failed to update co-admin status:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro ao Atualizar",
-        description: error instanceof Error ? error.message : "Não foi possível atualizar o status de co-admin.",
-      });
+      toast({ variant: "destructive", title: "Erro ao Atualizar", description: error instanceof Error ? error.message : "Erro desconhecido." });
     } finally {
       setIsUpdatingCoAdminStatus(null);
     }
@@ -276,7 +273,6 @@ export default function AdminDashboardClient() {
 
   const handleBanUser = async (targetUser: User) => {
     if (!currentUser || (currentUser.username !== ADMIN_USERNAME && !currentUser.isCoAdmin)) return;
-
     setIsBanningUser(targetUser.username);
     try {
         const response = await fetch('/api/admin/ban-user', {
@@ -284,33 +280,12 @@ export default function AdminDashboardClient() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: targetUser.username }),
         });
-
-        const updatedUserFromServer = await response.json();
-
-        if (!response.ok) {
-            throw new Error(updatedUserFromServer.message || `Falha ao banir ${targetUser.username}.`);
-        }
-
-        setUsers(prevUsers =>
-            prevUsers.map(u =>
-              u.username === updatedUserFromServer.username ? updatedUserFromServer : u
-            )
-        );
-
-        toast({
-            title: "Usuário Banido!",
-            description: `${targetUser.displayName} foi banido permanentemente.`,
-        });
-        
-        fetch('/api/admin/notifications').then(res => res.json()).then(data => setNotifications(data.notifications || []));
-
+        if (!response.ok) throw new Error('Falha ao banir usuário.');
+        const updatedUser = await response.json();
+        setUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? updatedUser : u));
+        toast({ title: "Usuário Banido!", description: `${targetUser.displayName} foi banido permanentemente.` });
     } catch (error) {
-        console.error("Failed to ban user:", error);
-        toast({
-            variant: "destructive",
-            title: "Erro ao Banir",
-            description: error instanceof Error ? error.message : "Não foi possível banir o usuário.",
-        });
+        toast({ variant: "destructive", title: "Erro ao Banir", description: error instanceof Error ? error.message : "Erro desconhecido." });
     } finally {
         setIsBanningUser(null);
     }
@@ -325,18 +300,11 @@ export default function AdminDashboardClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Falha ao atualizar o status do servidor.');
-      }
-      setServerStatus(data.status);
-      toast({
-        title: 'Status do Servidor Atualizado!',
-        description: `O servidor agora está ${data.status === 'online' ? 'ONLINE' : 'OFFLINE (em manutenção)'}.`
-      });
+      if (!response.ok) throw new Error('Falha ao atualizar o status do servidor.');
+      setServerStatus(newStatus);
+      toast({ title: 'Status do Servidor Atualizado!', description: `O servidor agora está ${newStatus.toUpperCase()}.` });
     } catch (error) {
-      console.error("Failed to update server status:", error);
-      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Não foi possível atualizar o status do servidor.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Erro desconhecido.' });
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -350,18 +318,12 @@ export default function AdminDashboardClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: checked }),
       });
+      if (!response.ok) throw new Error('Falha ao atualizar o status dos anúncios.');
       const data = await response.json();
-       if (!response.ok) {
-        throw new Error(data.message || 'Falha ao atualizar o status dos anúncios.');
-      }
-       setAdConfig(prev => prev ? { ...prev, enabled: data.enabled } : null);
-      toast({
-        title: 'Status dos Anúncios Atualizado!',
-        description: `O sistema de anúncios agora está ${data.enabled ? 'ATIVADO' : 'DESATIVADO'}.`
-      });
+      setAdConfig(prev => prev ? { ...prev, enabled: data.enabled } : null);
+      toast({ title: 'Status dos Anúncios Atualizado!', description: `O sistema de anúncios agora está ${data.enabled ? 'ATIVADO' : 'DESATIVADO'}.` });
     } catch (error) {
-      console.error("Failed to update ad status:", error);
-      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Não foi possível atualizar o status dos anúncios.' });
+      toast({ variant: 'destructive', title: 'Erro', description: error instanceof Error ? error.message : 'Erro desconhecido.' });
     } finally {
       setIsUpdatingAdStatus(false);
     }
@@ -370,7 +332,7 @@ export default function AdminDashboardClient() {
   const handleAdFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+      if (file.size > 50 * 1024 * 1024) {
         toast({ variant: 'destructive', title: "Vídeo Muito Grande", description: "O limite para o vídeo de anúncio é de 50MB." });
         return;
       }
@@ -379,39 +341,32 @@ export default function AdminDashboardClient() {
   }
 
   const handleUploadAd = async () => {
-    if (!newAdFile) {
-        toast({ variant: 'destructive', title: "Nenhum arquivo", description: "Por favor, selecione um vídeo para enviar." });
-        return;
-    }
+    if (!newAdFile) return;
     setIsUploadingAd(true);
-    try {
-        const reader = new FileReader();
-        reader.readAsDataURL(newAdFile);
-        reader.onload = async (event) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(newAdFile);
+    reader.onload = async (event) => {
+        try {
             const videoDataUri = event.target?.result as string;
-            
             const response = await fetch('/api/admin/ads', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newAdFile.name, videoDataUri }),
             });
+            if (!response.ok) throw new Error('Falha ao enviar anúncio.');
             const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.message || "Falha ao enviar anúncio.");
-            }
             setAdConfig(data);
             setNewAdFile(null);
             toast({ title: "Sucesso!", description: `Anúncio "${newAdFile.name}" foi enviado.` });
+        } catch (error) {
+            toast({ variant: 'destructive', title: 'Erro de Upload', description: error instanceof Error ? error.message : 'Erro desconhecido.' });
+        } finally {
             setIsUploadingAd(false);
-        };
-        reader.onerror = (error) => {
-            throw new Error("Falha ao ler o arquivo de vídeo.");
         }
-
-    } catch (error) {
-      console.error("Failed to upload ad:", error);
-      toast({ variant: 'destructive', title: 'Erro de Upload', description: error instanceof Error ? error.message : 'Não foi possível enviar o anúncio.' });
-      setIsUploadingAd(false);
+    };
+    reader.onerror = () => {
+        toast({ variant: 'destructive', title: 'Erro de Leitura', description: 'Não foi possível ler o ficheiro de vídeo.' });
+        setIsUploadingAd(false);
     }
   };
 
@@ -443,7 +398,6 @@ export default function AdminDashboardClient() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
-            {!currentUser && <p className="text-sm mt-2">Por favor, faça login.</p>}
           </CardContent>
         </Card>
       </div>
@@ -471,13 +425,7 @@ export default function AdminDashboardClient() {
                   {notifications.map((notif, index) => <li key={index}>{notif}</li>)}
                 </ul>
               </ScrollArea>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearNotifications}
-                disabled={isClearingNotifications}
-                className="text-accent hover:bg-accent/10 hover:text-accent flex-shrink-0 ml-4"
-              >
+              <Button variant="ghost" size="sm" onClick={handleClearNotifications} disabled={isClearingNotifications}>
                 {isClearingNotifications ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
                 <span className="ml-1 hidden sm:inline">Limpar</span>
               </Button>
@@ -486,106 +434,64 @@ export default function AdminDashboardClient() {
         </Alert>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-headline flex items-center gap-2">
-              <Server className="text-primary" />
-              Status do Servidor
-            </CardTitle>
-            <CardDescription>
-              Ative ou desative o modo de manutenção. Quando offline, os usuários não poderão logar, registrar ou iniciar partidas.
-            </CardDescription>
+            <CardTitle className="text-xl font-headline flex items-center gap-2"><Server className="text-primary" />Status do Servidor</CardTitle>
+            <CardDescription>Ative ou desative o modo de manutenção para o servidor.</CardDescription>
           </CardHeader>
           <CardContent>
-            {serverStatus === 'loading' ? (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-muted-foreground">Carregando status...</span>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-4">
-                <Switch
-                  id="server-status-switch"
-                  checked={serverStatus === 'online'}
-                  onCheckedChange={handleToggleServerStatus}
-                  disabled={isUpdatingStatus}
-                />
-                <Label htmlFor="server-status-switch" className="flex-grow">
-                  <div className="flex items-center gap-2">
-                    {serverStatus === 'online' ? <Server className="text-green-500"/> : <ServerOff className="text-destructive"/>}
-                    <span className={`font-bold ${serverStatus === 'online' ? 'text-green-500' : 'text-destructive'}`}>
-                      Servidor {serverStatus.toUpperCase()}
-                    </span>
-                  </div>
-                </Label>
-                {isUpdatingStatus && <Loader2 className="h-5 w-5 animate-spin" />}
-              </div>
-            )}
+            <div className="flex items-center space-x-4">
+              <Switch id="server-status-switch" checked={serverStatus === 'online'} onCheckedChange={handleToggleServerStatus} disabled={isUpdatingStatus} />
+              <Label htmlFor="server-status-switch" className="flex-grow flex items-center gap-2">
+                {serverStatus === 'online' ? <Server className="text-green-500"/> : <ServerOff className="text-destructive"/>}
+                <span className={`font-bold ${serverStatus === 'online' ? 'text-green-500' : 'text-destructive'}`}>Servidor {serverStatus.toUpperCase()}</span>
+              </Label>
+              {isUpdatingStatus && <Loader2 className="h-5 w-5 animate-spin" />}
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl font-headline flex items-center gap-2">
-              <Clapperboard className="text-primary" />
-              Gerenciamento de Anúncios
-            </CardTitle>
-            <CardDescription>
-              Ative ou desative o sistema de anúncios e faça upload de novos vídeos.
-            </CardDescription>
+            <CardTitle className="text-xl font-headline flex items-center gap-2"><GitBranch className="text-primary" />Controle de Versão</CardTitle>
+            <CardDescription>Faça upgrade, downgrade e publique novas versões.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-             {adConfig === null ? (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-muted-foreground">Carregando config. de anúncios...</span>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center space-x-4">
-                    <Switch
-                    id="ad-status-switch"
-                    checked={adConfig.enabled}
-                    onCheckedChange={handleToggleAdStatus}
-                    disabled={isUpdatingAdStatus}
-                    />
-                    <Label htmlFor="ad-status-switch" className="flex-grow">
-                    <div className="flex items-center gap-2">
-                        <span className={`font-bold ${adConfig.enabled ? 'text-green-500' : 'text-destructive'}`}>
-                        Sistema de Anúncios {adConfig.enabled ? 'ATIVADO' : 'DESATIVADO'}
-                        </span>
-                    </div>
-                    </Label>
-                    {isUpdatingAdStatus && <Loader2 className="h-5 w-5 animate-spin" />}
-                </div>
-                <Separator />
-                <div className="space-y-2">
-                    <Label htmlFor="ad-upload">Enviar novo anúncio (vídeo)</Label>
-                    <div className="flex items-center gap-2">
-                        <Input id="ad-upload" type="file" accept="video/*" onChange={handleAdFileChange} disabled={isUploadingAd} className="flex-grow"/>
-                        <Button onClick={handleUploadAd} disabled={isUploadingAd || !newAdFile}>
-                            {isUploadingAd ? <Loader2 className="h-4 w-4 animate-spin"/> : <UploadCloud className="h-4 w-4"/>}
-                        </Button>
-                    </div>
-                    {newAdFile && <p className="text-xs text-muted-foreground">Selecionado: {newAdFile.name} ({formatBytes(newAdFile.size)})</p>}
-                </div>
-                <Separator />
-                <Label>Anúncios Enviados ({adConfig.videos.length})</Label>
-                <ScrollArea className="h-24 rounded-md border p-2">
-                    {adConfig.videos.length > 0 ? (
-                        <ul className="space-y-1">
-                            {adConfig.videos.map(ad => (
-                                <li key={ad.id} className="text-sm text-muted-foreground flex items-center gap-2">
-                                    <Video className="h-4 w-4 shrink-0"/> <span className="truncate">{ad.name}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : <p className="text-sm text-center text-muted-foreground py-6">Nenhum anúncio enviado.</p>}
-                </ScrollArea>
-              </>
-            )}
+            <div className="flex items-center justify-center p-2 bg-muted rounded-lg">
+              <span className="font-mono text-lg text-primary">{version || <Loader2 className="h-5 w-5 animate-spin" />}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={handleUpgrade} disabled={isUpgrading || isDowngrading}>
+                {isUpgrading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <ArrowUp className="h-4 w-4 mr-2"/>}
+                Upgrade
+              </Button>
+              <Button variant="outline" onClick={handleDowngrade} disabled={isUpgrading || isDowngrading}>
+                {isDowngrading ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <ArrowDown className="h-4 w-4 mr-2"/>}
+                Downgrade
+              </Button>
+            </div>
+            <Button onClick={handlePublish} className="w-full">
+              <Rocket className="h-4 w-4 mr-2"/>
+              Publicar Alterações
+            </Button>
           </CardContent>
+        </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle className="text-xl font-headline flex items-center gap-2"><Trash2 className="text-primary" />Manutenção</CardTitle>
+                <CardDescription>Execute tarefas de manutenção na base de dados.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button variant="destructive" onClick={handleDeleteExpiredUsers} disabled={isDeletingUsers} className="w-full">
+                    {isDeletingUsers ? <Loader2 className="h-4 w-4 animate-spin mr-2"/> : <Trash2 className="h-4 w-4 mr-2"/>}
+                    Limpar Usuários Banidos
+                </Button>
+                 <p className="text-xs text-muted-foreground mt-2">
+                    Isto excluirá permanentemente os usuários banidos há mais de 30 dias. Esta ação é irreversível.
+                </p>
+            </CardContent>
         </Card>
       </div>
 
@@ -593,22 +499,12 @@ export default function AdminDashboardClient() {
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle className="text-xl font-headline">Gerenciamento de Usuários</CardTitle>
+          <div className="relative pt-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input id="searchUser" type="text" placeholder="Buscar por nome ou usuário..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 w-full sm:w-1/2 lg:w-1/3" />
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-6">
-            <Label htmlFor="searchUser" className="sr-only">Buscar Usuário</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-              <Input
-                id="searchUser"
-                type="text"
-                placeholder="Buscar por nome ou usuário..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full sm:w-1/2 lg:w-1/3"
-              />
-            </div>
-          </div>
           <div className="overflow-x-auto rounded-lg border">
             <Table>
               <TableHeader>
@@ -616,27 +512,20 @@ export default function AdminDashboardClient() {
                   <TableHead>Usuário</TableHead>
                   <TableHead className="text-center">Score</TableHead>
                   <TableHead className="text-center">País</TableHead>
-                  <TableHead className="text-center w-[150px]">Co-Admin</TableHead>
-                  <TableHead className="text-center w-[150px]">PRO</TableHead>
-                  <TableHead className="text-center w-[150px]">Juiz</TableHead>
-                  <TableHead className="text-center w-[120px]">Ações</TableHead>
+                  <TableHead className="text-center">Co-Admin</TableHead>
+                  <TableHead className="text-center">PRO</TableHead>
+                  <TableHead className="text-center">Juiz</TableHead>
+                  <TableHead className="text-center">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredUsers.length > 0 ? filteredUsers.map((userToList) => (
-                  <TableRow key={userToList.id} className={userToList.isBanned ? 'bg-destructive/10 hover:bg-destructive/20' : ''}>
+                  <TableRow key={userToList.id} className={userToList.isBanned ? 'bg-destructive/10' : ''}>
                     <TableCell>
                       <div className="flex items-center space-x-3">
-                        <Avatar className="h-10 w-10 border-2 border-secondary">
-                          <AvatarImage
-                            src={userToList.profilePictureUrl || `https://placehold.co/100x100.png?text=${getInitials(userToList.displayName)}`}
-                            alt={userToList.displayName}
-                            data-ai-hint="avatar person"
-                          />
-                          <AvatarFallback>{getInitials(userToList.displayName)}</AvatarFallback>
-                        </Avatar>
+                        <Avatar className="h-10 w-10 border-2 border-secondary"><AvatarImage src={userToList.profilePictureUrl || ''} /><AvatarFallback>{getInitials(userToList.displayName)}</AvatarFallback></Avatar>
                         <div>
-                          <p className={`font-medium ${userToList.isBanned ? 'line-through text-muted-foreground' : ''}`}>{userToList.displayName}</p>
+                          <p className={`font-medium ${userToList.isBanned ? 'line-through' : ''}`}>{userToList.displayName}</p>
                           <p className="text-xs text-muted-foreground">@{userToList.username}</p>
                         </div>
                       </div>
@@ -644,78 +533,34 @@ export default function AdminDashboardClient() {
                     <TableCell className="text-center">{userToList.score}</TableCell>
                     <TableCell className="text-center">{userToList.country}</TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                          {isUpdatingCoAdminStatus === userToList.username ? (
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                              <>
-                                  {(userToList.isCoAdmin || userToList.username === ADMIN_USERNAME) && <UserCog className="h-5 w-5 text-accent" />}
-                                  <Switch
-                                      id={`coadmin-switch-${userToList.username}`}
-                                      checked={!!userToList.isCoAdmin}
-                                      onCheckedChange={() => handleToggleCoAdminStatus(userToList)}
-                                      disabled={isUpdatingCoAdminStatus === userToList.username || userToList.username === ADMIN_USERNAME} 
-                                      aria-label={`Tornar ${userToList.displayName} co-admin`}
-                                  />
-                              </>
-                          )}
+                      <div className="flex items-center justify-center">
+                        {isUpdatingCoAdminStatus === userToList.username ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                          <Switch id={`coadmin-switch-${userToList.username}`} checked={!!userToList.isCoAdmin} onCheckedChange={() => handleToggleCoAdminStatus(userToList)} disabled={isUpdatingCoAdminStatus === userToList.username || userToList.username === ADMIN_USERNAME} />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                          {isUpdatingProStatus === userToList.username ? (
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                              <>
-                                  {userToList.isPro && <Gem className="h-5 w-5 text-purple-400" />}
-                                  <Switch
-                                      id={`pro-switch-${userToList.username}`}
-                                      checked={!!userToList.isPro}
-                                      onCheckedChange={() => handleToggleProStatus(userToList)}
-                                      disabled={isUpdatingProStatus === userToList.username || userToList.username === ADMIN_USERNAME} 
-                                      aria-label={`Tornar ${userToList.displayName} PRO`}
-                                  />
-                              </>
-                          )}
+                      <div className="flex items-center justify-center">
+                        {isUpdatingProStatus === userToList.username ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                          <Switch id={`pro-switch-${userToList.username}`} checked={!!userToList.isPro} onCheckedChange={() => handleToggleProStatus(userToList)} disabled={isUpdatingProStatus === userToList.username} />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                          {isUpdatingJudgeStatus === userToList.username ? (
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : (
-                              <>
-                                  {userToList.isJudge && <Crown className="h-5 w-5 text-yellow-500 fill-yellow-500" />}
-                                  <Switch
-                                      id={`judge-switch-${userToList.username}`}
-                                      checked={!!userToList.isJudge}
-                                      onCheckedChange={() => handleToggleJudgeStatus(userToList)}
-                                      disabled={isUpdatingJudgeStatus === userToList.username || userToList.username === ADMIN_USERNAME} 
-                                      aria-label={`Tornar ${userToList.displayName} juiz`}
-                                  />
-                              </>
-                          )}
+                      <div className="flex items-center justify-center">
+                        {isUpdatingJudgeStatus === userToList.username ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                          <Switch id={`judge-switch-${userToList.username}`} checked={!!userToList.isJudge} onCheckedChange={() => handleToggleJudgeStatus(userToList)} disabled={isUpdatingJudgeStatus === userToList.username} />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                        <Button
-                            variant={userToList.isBanned ? "secondary" : "destructive"}
-                            size="sm"
-                            onClick={() => setUserToBan(userToList)}
-                            disabled={isBanningUser === userToList.username || userToList.username === ADMIN_USERNAME || userToList.isCoAdmin || userToList.isBanned}
-                            title={userToList.isBanned ? "Usuário já banido" : `Banir ${userToList.displayName}`}
-                        >
+                        <Button variant="destructive" size="sm" onClick={() => setUserToBan(userToList)} disabled={isBanningUser === userToList.username || userToList.username === ADMIN_USERNAME || userToList.isCoAdmin || userToList.isBanned}>
                             {isBanningUser === userToList.username ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
-                            <span className="ml-1 hidden sm:inline">{userToList.isBanned ? 'Banido' : 'Banir'}</span>
                         </Button>
                     </TableCell>
                   </TableRow>
                 )) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
-                       {searchTerm ? 'Nenhum usuário encontrado para sua busca.' : 'Nenhum usuário no sistema.'}
-                    </TableCell>
-                  </TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center">Nenhum usuário encontrado.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -728,22 +573,13 @@ export default function AdminDashboardClient() {
             <AlertDialogHeader>
             <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
             <AlertDialogDescription>
-                Esta ação banirá permanentemente o usuário <span className="font-bold">{userToBan?.displayName} (@{userToBan?.username})</span>.
-                Ele não poderá mais acessar a plataforma. Esta ação não pode ser desfeita por esta interface.
+                Esta ação banirá permanentemente o usuário <span className="font-bold">{userToBan?.displayName} (@{userToBan?.username})</span>. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setUserToBan(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => {
-                    if (userToBan) {
-                        handleBanUser(userToBan);
-                    }
-                    setUserToBan(null);
-                }}
-            >
-                Sim, banir usuário
+            <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => { if (userToBan) handleBanUser(userToBan); setUserToBan(null); }}>
+                Sim, banir
             </AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>

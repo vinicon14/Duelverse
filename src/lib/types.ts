@@ -13,6 +13,7 @@ export interface User {
   isVerified?: boolean;
   isJudge?: boolean; 
   isBanned?: boolean;
+  bannedAt?: number; // Timestamp when the user was banned
   isPro?: boolean;
   isCoAdmin?: boolean;
 }
