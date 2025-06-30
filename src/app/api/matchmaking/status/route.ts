@@ -1,7 +1,7 @@
-// src/app/api/matchmaking/status/route.ts
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { matchmakingQueue, activeGames, userGameMap } from '@/lib/matchmakingStore';
-import type { MatchmakingStatusResponse } from '@/lib/types';
+import type { MatchmakingStatusResponse, MatchedGame, MatchmakingQueueEntry } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,37 +12,39 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: 'error', message: 'ID do usuário não fornecido.' }, { status: 400 });
     }
 
-    // 1. Check if the user is in an active game. This is the highest priority.
     if (userGameMap.has(userId)) {
       const gameId = userGameMap.get(userId)!;
       const game = activeGames.get(gameId);
 
       if (game) {
-        // SUCCESS: User is in a valid, active game.
-        console.log(`[API Status] User ${userId} is 'matched' in game ${gameId}.`);
-        return NextResponse.json({ status: 'matched', game } as MatchmakingStatusResponse);
+        // Find the opponent
+        const opponent = game.players.find(p => p.userId !== userId);
+        
+        // This is the critical fix: create a new game object for the response
+        // that is tailored to the requesting user.
+        const gameForUser = {
+          gameId: game.gameId,
+          jitsiRoomName: game.jitsiRoomName,
+          mode: game.mode,
+          opponent: {
+            id: opponent?.userId || 'unknown',
+            displayName: opponent?.displayName || 'Oponente Desconhecido',
+          },
+          // We no longer need to send the full player list
+        };
+
+        return NextResponse.json({ status: 'matched', game: gameForUser });
       } else {
-        // SELF-HEALING: User is mapped to a game that no longer exists.
-        // This is an inconsistent state. We must clean up the user's mapping
-        // and inform the client to reset.
         userGameMap.delete(userId);
-        console.error(`[API Status - Sistema de Pedra] Data inconsistency for user ${userId}. Mapped to non-existent game ${gameId}. Cleaned up entry.`);
-        return NextResponse.json(
-          { status: 'error', message: 'Ocorreu um erro de sincronização. A busca foi reiniciada.' } as MatchmakingStatusResponse, 
-          { status: 500 } // Use a 500-level error to signal a problem to the client.
-        );
+        return NextResponse.json({ status: 'error', message: 'Erro de sincronização.' }, { status: 500 });
       }
     }
 
-    // 2. If not in a game, check if the user is waiting in the queue.
     if (matchmakingQueue.some(p => p.userId === userId)) {
-        console.log(`[API Status] User ${userId} is 'searching' in the queue.`);
-        return NextResponse.json({ status: 'searching', message: 'Ainda procurando...' } as MatchmakingStatusResponse);
+      return NextResponse.json({ status: 'searching' });
     }
     
-    // 3. If not in a game or in the queue, they are idle.
-    console.log(`[API Status] User ${userId} is 'idle'.`);
-    return NextResponse.json({ status: 'idle', message: 'Você não está na fila de pareamento.' } as MatchmakingStatusResponse);
+    return NextResponse.json({ status: 'idle' });
 
   } catch (error) {
     console.error('Error in /api/matchmaking/status:', error);

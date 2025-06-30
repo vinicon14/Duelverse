@@ -1,24 +1,33 @@
 
-// src/app/api/version/upgrade/route.ts
 import { NextResponse } from 'next/server';
 import { upgradeVersion } from '@/lib/versioning';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { User } from '@/lib/types';
+import { getUserByUsername } from '@/lib/userStore';
 
-export async function POST(req: Request) {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as User | undefined;
+const ADMIN_USERNAME = 'vinicon14';
 
-    if (!user || (user.username !== 'vinicon14' && !user.isCoAdmin)) {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+export async function POST(request: Request) {
+  try {
+    const userId = request.headers.get('Authorization');
+    if (!userId) {
+      return NextResponse.json({ message: 'Unauthorized: Missing user ID' }, { status: 401 });
     }
 
-    try {
-        const newVersion = await upgradeVersion();
-        return NextResponse.json({ version: newVersion });
-    } catch (error) {
-        console.error('Failed to upgrade version:', error);
-        return NextResponse.json({ message: 'Failed to upgrade version' }, { status: 500 });
+    const adminUser = await getUserByUsername(ADMIN_USERNAME);
+    if (!adminUser || adminUser.id !== userId) {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
+
+    // Upgrade to the new version number, without clearing the data
+    const newVersion = await upgradeVersion();
+
+    return NextResponse.json({
+      message: `Successfully upgraded to version ${newVersion}. You can now save this new state.`,
+      newVersion: newVersion,
+    });
+
+  } catch (error) {
+    console.error('Upgrade failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json({ message: `Upgrade failed: ${errorMessage}` }, { status: 500 });
+  }
 }

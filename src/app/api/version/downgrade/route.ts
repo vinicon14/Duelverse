@@ -1,27 +1,43 @@
 
-// src/app/api/version/downgrade/route.ts
 import { NextResponse } from 'next/server';
-import { downgradeVersion } from '@/lib/versioning';
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { User } from '@/lib/types';
+import { downgradeVersion, restoreVersion } from '@/lib/versioning';
+import { getUserByUsername } from '@/lib/userStore';
 
-export async function POST(req: Request) {
-    const session = await getServerSession(authOptions);
-    const user = session?.user as User | undefined;
+const ADMIN_USERNAME = 'vinicon14';
 
-    if (!user || (user.username !== 'vinicon14' && !user.isCoAdmin)) {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+export async function POST(request: Request) {
+  try {
+    const userId = request.headers.get('Authorization');
+    if (!userId) {
+      return NextResponse.json({ message: 'Unauthorized: Missing user ID' }, { status: 401 });
+    }
+
+    const adminUser = await getUserByUsername(ADMIN_USERNAME);
+    if (!adminUser || adminUser.id !== userId) {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
     
-    try {
-        const newVersion = await downgradeVersion();
-        return NextResponse.json({ version: newVersion });
-    } catch (error) {
-        console.error('Failed to downgrade version:', error);
-        if (error instanceof Error) {
-            return NextResponse.json({ message: error.message }, { status: 400 });
-        }
-        return NextResponse.json({ message: 'Failed to downgrade version' }, { status: 500 });
+    // 1. Get the new (downgraded) version number
+    const newVersion = await downgradeVersion();
+
+    // 2. Restore the database from the versions.json file
+    const restoredData = await restoreVersion(newVersion);
+    if (!restoredData) {
+        // If for some reason the version wasn't found in versions.json,
+        // we revert the version number change to avoid inconsistency.
+        // (This would require implementing an 'upgrade' without the save/clear logic)
+        // For now, we'll throw an error.
+        throw new Error(`Could not find saved data for version ${newVersion}.`);
     }
+
+    return NextResponse.json({
+      message: `Successfully downgraded to version ${newVersion}. Database has been restored.`,
+      newVersion: newVersion,
+    });
+
+  } catch (error) {
+    console.error('Downgrade failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json({ message: `Downgrade failed: ${errorMessage}` }, { status: 500 });
+  }
 }

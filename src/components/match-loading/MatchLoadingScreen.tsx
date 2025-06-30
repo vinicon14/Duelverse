@@ -1,11 +1,12 @@
+
 'use client';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Loader2, Camera, Users, MessageSquare, CheckCircle } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { Separator } from "@/components/ui/separator";
 
 interface MatchLoadingScreenProps {
   jitsiRoomName: string;
@@ -21,7 +22,7 @@ export default function MatchLoadingScreen({
   onProceed,
 }: MatchLoadingScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
-  const [countdown, setCountdown] = useState(5); // 5 second countdown before enabling proceed
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     if (isLoading) {
@@ -40,7 +41,6 @@ export default function MatchLoadingScreen({
   }, [isLoading]);
 
   return (
-    // This container is now scrollable to ensure all content is visible on smaller screens.
     <div className="fixed inset-0 bg-background/90 backdrop-blur-sm flex justify-center p-4 z-[100] animate-fadeIn overflow-y-auto pt-8 md:pt-4 md:items-center">
       <Card className="w-full max-w-3xl shadow-2xl self-start md:self-auto mb-8">
         <CardHeader className="text-center">
