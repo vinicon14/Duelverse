@@ -5,6 +5,7 @@ export interface User {
   displayName: string;
   country: string;
   email: string;
+  passwordHash: string;
   score: number;
   profilePictureUrl?: string;
   decklistImageUrl?: string;

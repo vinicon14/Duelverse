@@ -1,7 +1,7 @@
 
+// src/app/api/auth/[...nextauth]/route.ts
 import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authConfig } from "@/lib/auth"; // Importa a configuração de autenticação
 
-const handler = NextAuth(authOptions);
-
-export { handler as GET, handler as POST };
+// Usa a configuração para criar os handlers GET e POST
+export const { handlers: { GET, POST } } = NextAuth(authConfig);

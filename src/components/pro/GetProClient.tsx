@@ -32,7 +32,7 @@ export default function GetProClient() {
       const response = await fetch('/api/users/notify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user.username }),
+        body: JSON.stringify({ username: user.displayName }),
       });
 
       if (!response.ok) {
@@ -115,10 +115,10 @@ export default function GetProClient() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4">
-            Após realizar o pagamento, envie o comprovante para o e-mail abaixo. **Não se esqueça de incluir seu nome de usuário ({user?.username}) no e-mail!**
+            Após realizar o pagamento, envie o comprovante para o e-mail abaixo. **Não se esqueça de incluir seu nome de usuário ({user?.displayName}) no e-mail!**
           </p>
           <Button asChild>
-            <a href={`mailto:yugihola1@gmail.com?subject=Comprovante%20de%20Pagamento%20PRO%20-%20${user?.username || 'Seu Usuário'}&body=Olá,%20estou%20enviando%20o%20comprovante%20de%20pagamento%20para%20o%20status%20PRO.%0A%0AMeu%20nome%20de%20usuário%20é:%20${user?.username || 'Insira seu usuário aqui.'}%0A%0AAnexo%20o%20comprovante.%0A%0AObrigado!`}>
+            <a href={`mailto:yugihola1@gmail.com?subject=Comprovante%20de%20Pagamento%20PRO%20-%20${user?.displayName || 'Seu Usuário'}&body=Olá,%20estou%20enviando%20o%20comprovante%20de%20pagamento%20para%20o%20status%20PRO.%0A%0AMeu%20nome%20de%20usuário%20é:%20${user?.displayName || 'Insira seu usuário aqui.'}%0A%0AAnexo%20o%20comprovante.%0A%0AObrigado!`}>
               <Mail className="mr-2 h-4 w-4" />
               Abrir Cliente de E-mail
             </a>

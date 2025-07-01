@@ -20,8 +20,6 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth as firebaseAuth } from "@/lib/firebaseConfig"; // Importa o auth do Firebase
 import { useRouter } from "next/navigation";
 
 const formSchema = z.object({
@@ -30,7 +28,7 @@ const formSchema = z.object({
 });
 
 export default function LoginForm() {
-  const { login } = useAuth(); // Nossa função de login do context
+  const { login } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -46,26 +44,16 @@ export default function LoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // 1. Construir o email a partir do username
-      const email = `${values.username.toLowerCase()}@duelverse.app`;
-
-      // 2. Autenticar com o Firebase (client-side)
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, values.password);
-      
-      // 3. Obter o idToken do Firebase
-      const idToken = await userCredential.user.getIdToken();
-
-      // 4. Chamar nossa função de login do context com o idToken
-      await login(idToken);
+      await login(values.username, values.password);
       
       toast({ title: "Login bem-sucedido!", description: "Bem-vindo de volta!" });
-      router.push('/dashboard'); // Redireciona após o sucesso
+      router.push('/dashboard');
 
     } catch (error: any) {
       let errorMessage = "Ocorreu um erro desconhecido.";
-       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-            errorMessage = "Usuário ou senha inválidos.";
-        }
+      if (error.message) {
+        errorMessage = error.message;
+      }
       toast({
         variant: "destructive",
         title: "Erro no Login",

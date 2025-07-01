@@ -1,51 +1,74 @@
 
-import { NextAuthOptions, User as NextAuthUser } from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import { getAdminAuth } from './firebaseAdmin'; // Importa a nova função "lazy"
-import { getUserById } from './userStore';
+import type { NextAuthConfig } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import type { User } from "@/lib/types";
 
-export const authOptions: NextAuthOptions = {
+export const authConfig = {
   providers: [
     CredentialsProvider({
-      name: 'Credentials',
+      name: "Credentials",
       credentials: {
-        idToken: { label: "ID Token", type: "text" },
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.idToken) return null;
-        
+        if (!credentials?.username || !credentials.password) return null;
+
         try {
-          // Obtém a instância de autenticação de forma segura
-          const auth = getAdminAuth();
-          const decodedToken = await auth.verifyIdToken(credentials.idToken);
-          const user = await getUserById(decodedToken.uid);
-          return user ? { ...user, id: decodedToken.uid } as NextAuthUser : null;
-        } catch (error) {
-          console.error("Firebase authentication error in authorize:", error);
-          return null;
+          const authResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/auth/authenticate`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              username: credentials.username,
+              password: credentials.password,
+            }),
+          });
+
+          if (!authResponse.ok) {
+            const errorData = await authResponse.json();
+            console.error("Authentication API returned an error:", errorData.message);
+            throw new Error(errorData.message || "Falha na autenticação.");
+          }
+
+          const data = await authResponse.json();
+          return data.user as User;
+
+        } catch (error: any) {
+          console.error("Error during authentication API call:", error);
+          throw new Error(error.message || "Erro ao tentar autenticar.");
         }
       },
     }),
   ],
   session: {
-    strategy: 'jwt',
+    strategy: "jwt",
   },
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       if (user) {
-        token.id = user.id;
-        token.displayName = user.displayName;
-        token.score = user.score;
-        token.isPro = user.isPro;
-        token.profilePictureUrl = user.profilePictureUrl;
+        const authUser = user as User;
+        token.id = authUser.id;
+        token.displayName = authUser.displayName;
+        token.score = authUser.score;
+        token.isPro = authUser.isPro;
+        token.profilePictureUrl = authUser.profilePictureUrl;
+        token.isCoAdmin = authUser.isCoAdmin;
+        token.isJudge = authUser.isJudge;
+        token.isBanned = authUser.isBanned;
       }
-      
+
       if (trigger === "update" && session?.user) {
-          const updatedUser = await getUserById(token.id as string);
-          if (updatedUser) {
-              token.displayName = updatedUser.displayName;
-              token.profilePictureUrl = updatedUser.profilePictureUrl;
-          }
+        if (session.user.id === token.id) {
+            token.displayName = session.user.displayName;
+            token.profilePictureUrl = session.user.profilePictureUrl;
+            token.score = (session.user as User).score;
+            token.isPro = (session.user as User).isPro;
+            token.isCoAdmin = (session.user as User).isCoAdmin;
+            token.isJudge = (session.user as User).isJudge;
+            token.isBanned = (session.user as User).isBanned;
+        }
       }
       
       return token;
@@ -57,13 +80,15 @@ export const authOptions: NextAuthOptions = {
         session.user.score = token.score as number;
         session.user.isPro = token.isPro as boolean;
         session.user.profilePictureUrl = token.profilePictureUrl as string;
+        session.user.isCoAdmin = token.isCoAdmin as boolean;
+        session.user.isJudge = token.isJudge as boolean;
+        session.user.isBanned = token.isBanned as boolean;
       }
       return session;
     },
   },
   pages: {
-    signIn: '/login',
-    error: '/login',
+    signIn: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET,
-};
+} satisfies NextAuthConfig;

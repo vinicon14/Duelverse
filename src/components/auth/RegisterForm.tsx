@@ -21,8 +21,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { UserPlus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth as firebaseAuth } from "@/lib/firebaseConfig";
+// As importações do Firebase foram removidas para o modo de teste local
 
 const formSchema = z.object({
   username: z.string().min(3, { message: "Usuário deve ter pelo menos 3 caracteres." }),
@@ -32,7 +31,7 @@ const formSchema = z.object({
 });
 
 export default function RegisterForm() {
-  const { register, login } = useAuth(); // Puxa ambas as funções do contexto
+  const { register } = useAuth(); // Puxa apenas a função register do contexto
   const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -50,19 +49,13 @@ export default function RegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // 1. Chama a API de registro para criar o usuário no Firestore/Firebase Auth
+      // Chama a função de registro do context (que agora lida com a API local e o login automático)
       await register(values.username, values.password, values.displayName, values.country);
       
-      toast({ title: "Registro bem-sucedido!", description: "Fazendo login na sua nova conta..." });
-
-      // 2. Após o registro, faz o login automaticamente
-      const email = `${values.username.toLowerCase()}@duelverse.app`;
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, values.password);
-      const idToken = await userCredential.user.getIdToken();
-      await login(idToken); // Chama o login do context para criar a sessão do NextAuth
-
-      toast({ title: "Login automático!", description: "Bem-vindo ao DuelVerse!" });
-      router.push('/dashboard');
+      // As toasts de sucesso e redirecionamento são tratadas dentro da função register do contexto agora.
+      // toast({ title: "Registro bem-sucedido!", description: "Fazendo login na sua nova conta..." }); // Removido
+      // toast({ title: "Login automático!", description: "Bem-vindo ao DuelVerse!" }); // Removido
+      router.push('/dashboard'); // Redireciona após o sucesso
 
     } catch (error) {
       toast({

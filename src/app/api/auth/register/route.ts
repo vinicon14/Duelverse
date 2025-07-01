@@ -1,7 +1,6 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { getAdminAuth } from '@/lib/firebaseAdmin'; // Importa a função "lazy"
-import { createUserInFirestore, getUserByUsername } from '@/lib/userStore';
+import { createUser, getUserByUsername } from '@/lib/userStore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,26 +15,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: 'Este nome de usuário já existe.' }, { status: 409 });
     }
 
-    // Obtém a instância de autenticação de forma segura
-    const auth = getAdminAuth(); 
-    const userRecord = await auth.createUser({
-      email: `${username.toLowerCase()}@duelverse.app`,
-      password: password,
-      displayName: displayName,
-    });
+    const uid = `local-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    await createUserInFirestore(userRecord.uid, username, displayName, country);
+    await createUser(uid, username, displayName, country, password);
 
-    return NextResponse.json({ uid: userRecord.uid, message: 'Usuário registrado com sucesso!' }, { status: 201 });
+    return NextResponse.json({ uid: uid, message: 'Usuário registrado com sucesso localmente!' }, { status: 201 });
 
   } catch (error: any) {
-    console.error("Registration error:", error);
-    let message = 'Ocorreu um erro durante o registro.';
-    if (error.code === 'auth/email-already-exists') {
-      message = 'Este nome de usuário (e-mail associado) já está em uso.';
-    } else if (error.code === 'auth/invalid-password') {
-      message = 'A senha deve ter pelo menos 6 caracteres.';
-    }
+    console.error("Registration error details (local mode):", error.stack || error);
+    let message = 'Ocorreu um erro durante o registro local.';
     return NextResponse.json({ message }, { status: 500 });
   }
 }
