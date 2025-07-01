@@ -1,39 +1,42 @@
 
-// src/app/api/private-room/join/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { joinPrivateRoom as joinRoomInStore } from '@/lib/matchmakingStore';
-import { getServerStatus } from '@/lib/userStore';
-import type { User, JoinPrivateRoomResponse } from '@/lib/types';
+import { getServerStatus, getUserById } from '@/lib/userStore';
+import type { JoinPrivateRoomResponse } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user || !session.user.id) {
+    return NextResponse.json({ status: 'error', message: 'Unauthorized' }, { status: 401 });
+  }
+
   const serverStatus = await getServerStatus();
   if (serverStatus === 'offline') {
     return NextResponse.json({ status: 'error', message: 'O servidor está em manutenção. Não é possível entrar em salas privadas.' }, { status: 503 });
   }
 
   try {
-    const { user, roomId } = (await request.json()) as { user: User; roomId: string };
-    console.log(`[API /private-room/join] Request received. User: ${user?.displayName}, RoomId: "${roomId}"`);
+    const { roomId } = (await request.json()) as { roomId: string };
+    const userId = session.user.id;
 
-    if (!user || !user.id || !user.displayName) {
-      console.warn("[API /private-room/join] Invalid user data in request.");
-      return NextResponse.json({ status: 'error', message: 'Usuário inválido.' } as JoinPrivateRoomResponse, { status: 400 });
+    const user = await getUserById(userId);
+    if (!user) {
+        return NextResponse.json({ status: 'error', message: 'User not found.' }, { status: 404 });
     }
+    
     if (!roomId || !roomId.trim()) {
-      console.warn("[API /private-room/join] Room ID not provided or empty.");
       return NextResponse.json({ status: 'error', message: 'ID da sala não fornecido.' } as JoinPrivateRoomResponse, { status: 400 });
     }
 
     const result = joinRoomInStore(user, roomId.trim());
-    console.log(`[API /private-room/join] Result from joinRoomInStore for user ${user.displayName}, room ${roomId}:`, result);
 
     if (!result.success || !result.game) {
       const status = result.message?.includes("cheia") ? 'full' : 'not_found';
-      console.warn(`[API /private-room/join] Failed to join room for ${user.displayName}. Message: ${result.message}. Status: ${status}`);
       return NextResponse.json({ status, message: result.message || 'Falha ao entrar na sala privada.' } as JoinPrivateRoomResponse, { status: status === 'full' ? 409 : 404 });
     }
     
-    console.log(`[API /private-room/join] User ${user.displayName} joined room ${result.game.roomId} successfully. The client will now poll for the 'ready_to_start' status.`);
     return NextResponse.json({
       status: 'joined',
       roomId: result.game.roomId,

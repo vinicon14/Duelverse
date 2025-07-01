@@ -19,6 +19,14 @@ async function ensureUploadDir(dir: string) {
   }
 }
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '100mb', // Increase limit to 100MB for video uploads
+    },
+  },
+};
+
 export async function POST(request: Request) {
   try {
     const userId = request.headers.get('Authorization');

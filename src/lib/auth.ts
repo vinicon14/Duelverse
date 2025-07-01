@@ -1,32 +1,27 @@
 
 import { NextAuthOptions, User as NextAuthUser } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { getUserByUsername } from '@/lib/userStore';
-import { User } from '@/lib/types';
+import { getAdminAuth } from './firebaseAdmin'; // Importa a nova função "lazy"
+import { getUserById } from './userStore';
 
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        username: { label: "Username", type: "text" },
+        idToken: { label: "ID Token", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.username) {
-          return null;
-        }
+        if (!credentials?.idToken) return null;
         
         try {
-          const user = await getUserByUsername(credentials.username);
-          if (user) {
-            // Since there's no password, we just return the user object if found.
-            // This matches the app's original logic.
-            return { ...user, id: user.id } as NextAuthUser;
-          } else {
-            return null;
-          }
+          // Obtém a instância de autenticação de forma segura
+          const auth = getAdminAuth();
+          const decodedToken = await auth.verifyIdToken(credentials.idToken);
+          const user = await getUserById(decodedToken.uid);
+          return user ? { ...user, id: decodedToken.uid } as NextAuthUser : null;
         } catch (error) {
-          console.error("Authorization error:", error);
+          console.error("Firebase authentication error in authorize:", error);
           return null;
         }
       },
@@ -36,37 +31,39 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
-      // When the user signs in, the `user` object is passed here.
-      // We persist the user's ID and custom properties to the token.
+    async jwt({ token, user, trigger, session }) {
       if (user) {
-        const customUser = user as User;
-        token.id = customUser.id;
-        token.username = customUser.username;
-        token.displayName = customUser.displayName;
-        token.isCoAdmin = customUser.isCoAdmin;
-        token.isJudge = customUser.isJudge;
-        token.isPro = customUser.isPro;
+        token.id = user.id;
+        token.displayName = user.displayName;
+        token.score = user.score;
+        token.isPro = user.isPro;
+        token.profilePictureUrl = user.profilePictureUrl;
       }
+      
+      if (trigger === "update" && session?.user) {
+          const updatedUser = await getUserById(token.id as string);
+          if (updatedUser) {
+              token.displayName = updatedUser.displayName;
+              token.profilePictureUrl = updatedUser.profilePictureUrl;
+          }
+      }
+      
       return token;
     },
     async session({ session, token }) {
-      // The session callback receives the token and we can pass its properties to the session object.
-      // This makes the user data available on the client side.
       if (token && session.user) {
         session.user.id = token.id as string;
-        session.user.username = token.username as string;
         session.user.displayName = token.displayName as string;
-        session.user.isCoAdmin = token.isCoAdmin as boolean;
-        session.user.isJudge = token.isJudge as boolean;
+        session.user.score = token.score as number;
         session.user.isPro = token.isPro as boolean;
+        session.user.profilePictureUrl = token.profilePictureUrl as string;
       }
       return session;
     },
   },
   pages: {
     signIn: '/login',
-    error: '/login', // Redirect to login page on error
+    error: '/login',
   },
-  secret: process.env.NEXTAUTH_SECRET || 'fallback-secret-for-development',
+  secret: process.env.NEXTAUTH_SECRET,
 };

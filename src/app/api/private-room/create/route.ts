@@ -1,34 +1,37 @@
 
-// src/app/api/private-room/create/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { createPrivateRoom as createRoomInStore } from '@/lib/matchmakingStore';
-import { getServerStatus } from '@/lib/userStore';
-import type { User, CreatePrivateRoomResponse } from '@/lib/types';
+import { getServerStatus, getUserById } from '@/lib/userStore';
+import type { CreatePrivateRoomResponse } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user || !session.user.id) {
+    return NextResponse.json({ status: 'error', message: 'Unauthorized' }, { status: 401 });
+  }
+
   const serverStatus = await getServerStatus();
   if (serverStatus === 'offline') {
     return NextResponse.json({ status: 'error', message: 'O servidor está em manutenção. Não é possível criar salas privadas.' }, { status: 503 });
   }
 
   try {
-    const { user, customRoomId } = (await request.json()) as { user: User; customRoomId?: string };
-    console.log(`[API /private-room/create] Request received. User: ${user?.displayName}, CustomRoomId: "${customRoomId}"`);
-
-    if (!user || !user.id || !user.displayName) {
-      console.warn("[API /private-room/create] Invalid user data in request.");
-      return NextResponse.json({ status: 'error', message: 'Usuário inválido.' } as CreatePrivateRoomResponse, { status: 400 });
+    const { customRoomId } = (await request.json()) as { customRoomId?: string };
+    const userId = session.user.id;
+    
+    const user = await getUserById(userId);
+    if (!user) {
+        return NextResponse.json({ status: 'error', message: 'User not found.' }, { status: 404 });
     }
 
     const result = createRoomInStore(user, customRoomId);
-    console.log(`[API /private-room/create] Result from createRoomInStore for user ${user.displayName}:`, result);
 
     if (!result.success || !result.roomId || !result.jitsiRoomName) {
-      console.warn(`[API /private-room/create] Failed to create room for ${user.displayName}. Message: ${result.message}`);
       return NextResponse.json({ status: 'error', message: result.message || 'Falha ao criar sala privada.' } as CreatePrivateRoomResponse, { status: 409 });
     }
     
-    console.log(`[API /private-room/create] Room created successfully for ${user.displayName}. RoomId: ${result.roomId}, JitsiRoomName: ${result.jitsiRoomName}`);
     return NextResponse.json({
       status: 'waiting_for_opponent',
       roomId: result.roomId,

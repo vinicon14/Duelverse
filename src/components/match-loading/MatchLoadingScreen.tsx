@@ -15,6 +15,11 @@ interface MatchLoadingScreenProps {
   onProceed: () => void;
 }
 
+interface DuelSetupImages {
+  left: string;
+  right: string;
+}
+
 export default function MatchLoadingScreen({
   jitsiRoomName,
   opponentDisplayName,
@@ -23,6 +28,25 @@ export default function MatchLoadingScreen({
 }: MatchLoadingScreenProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [countdown, setCountdown] = useState(5);
+  const [duelSetupImages, setDuelSetupImages] = useState<DuelSetupImages>({
+    left: "https://ms.yugipedia.com/0/06/Remote_Duel_mat_layout.png",
+    right: "https://ms.yugipedia.com/thumb/e/e0/RemoteDuel-GameMat.png/600px-RemoteDuel-GameMat.png",
+  });
+
+  useEffect(() => {
+    async function fetchDuelSetupImages() {
+      try {
+        const response = await fetch('/api/admin/duel-setup-image');
+        if (response.ok) {
+          const data = await response.json();
+          setDuelSetupImages(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch duel setup images, using defaults.", error);
+      }
+    }
+    fetchDuelSetupImages();
+  }, []);
 
   useEffect(() => {
     if (isLoading) {
@@ -76,20 +100,20 @@ export default function MatchLoadingScreen({
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                     <Image
-                        src="https://ms.yugipedia.com/0/06/Remote_Duel_mat_layout.png"
+                        src={duelSetupImages.left}
                         alt="Exemplo de layout de campo para Remote Duel"
                         width={300}
                         height={200}
                         className="rounded-md border object-cover"
-                        data-ai-hint="duel field"
+                        unoptimized
                     />
                     <Image
-                        src="https://ms.yugipedia.com/thumb/e/e0/RemoteDuel-GameMat.png/600px-RemoteDuel-GameMat.png"
+                        src={duelSetupImages.right}
                         alt="Playmat oficial do Yu-Gi-Oh! Remote Duel"
                         width={300}
                         height={200}
                         className="rounded-md border object-cover"
-                        data-ai-hint="playmat duel"
+                        unoptimized
                     />
                 </div>
               </CardContent>

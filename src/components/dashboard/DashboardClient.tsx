@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/useAuth";
+import { useSession } from "next-auth/react";
 import { Swords, Trophy, BookOpenText, Brain, Loader2, X, ClipboardCopy, PlusCircle, LogIn as JoinIcon, MinusCircle, Users, Gem, Dices, Eye, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { User as AuthUser, PrivateRoomStatus, CreatePrivateRoomResponse, JoinPrivateRoomResponse, MatchmakingMode, JoinMatchmakingResponse, ActiveDuelInfo } from "@/lib/types";
+import type { PrivateRoomStatus, CreatePrivateRoomResponse, JoinPrivateRoomResponse, MatchmakingMode, JoinMatchmakingResponse, ActiveDuelInfo } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import MatchLoadingScreen from "@/components/match-loading/MatchLoadingScreen";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -21,7 +21,8 @@ const getInitials = (name: string = "") => {
 };
 
 export default function DashboardClient() {
-  const { user } = useAuth();
+  const { data: session, status } = useSession();
+  const user = session?.user;
   const { toast } = useToast();
   
   const [isSearching, setIsSearching] = useState<MatchmakingMode | null>(null);
@@ -79,7 +80,6 @@ export default function DashboardClient() {
   }, [stopPolling]);
 
   const handleApiRequest = async (endpoint: string, body: object, setLoading: (loading: boolean) => void, successCallback: (data: any) => void, errorTitle: string) => {
-    if (!user) return;
     setLoading(true);
     try {
       const response = await fetch(endpoint, {
@@ -100,7 +100,7 @@ export default function DashboardClient() {
 
   const handleSearchDuel = (mode: MatchmakingMode) => {
     if (!user) return;
-    handleApiRequest('/api/matchmaking/join', { user: { id: user.id, displayName: user.displayName }, mode }, () => setIsSearching(mode), (data: JoinMatchmakingResponse) => {
+    handleApiRequest('/api/matchmaking/join', { mode }, () => setIsSearching(mode), (data: JoinMatchmakingResponse) => {
         if (data.status === 'matched' && data.game) { setFoundGame(data.game); } 
         else { startPolling(`/api/matchmaking/status?userId=${user.id}`, (matchData) => setFoundGame(matchData.game)); }
         toast({ title: "Buscando partida...", description: "Você foi adicionado à fila." });
@@ -108,13 +108,11 @@ export default function DashboardClient() {
   };
 
   const handleCancelSearch = () => {
-    if (!user) return;
-    handleApiRequest('/api/matchmaking/leave', { user: { id: user.id } }, () => {}, () => resetStates(), 'Erro ao cancelar busca');
+    handleApiRequest('/api/matchmaking/leave', {}, () => {}, () => resetStates(), 'Erro ao cancelar busca');
   };
 
   const handleCreatePrivateRoom = () => {
-    if (!user) return;
-    handleApiRequest('/api/private-room/create', { user: { id: user.id, displayName: user.displayName }, roomId: privateRoomCode || undefined }, setIsCreatingPrivateRoom, (data: CreatePrivateRoomResponse) => {
+    handleApiRequest('/api/private-room/create', { roomId: privateRoomCode || undefined }, setIsCreatingPrivateRoom, (data: CreatePrivateRoomResponse) => {
         setCreatedRoomCode(data.roomId);
         setPrivateRoomStatus('waiting_for_opponent');
         startPolling(`/api/private-room/status?roomId=${data.roomId}`, (matchData) => setFoundGame(matchData.game));
@@ -123,15 +121,13 @@ export default function DashboardClient() {
   };
 
   const handleJoinPrivateRoom = () => {
-    if (!user) return;
-    handleApiRequest('/api/private-room/join', { user: { id: user.id, displayName: user.displayName }, roomId: privateRoomCode }, setIsJoiningPrivateRoom, (data: JoinPrivateRoomResponse) => {
+    handleApiRequest('/api/private-room/join', { roomId: privateRoomCode }, setIsJoiningPrivateRoom, (data: JoinPrivateRoomResponse) => {
         if (data.game) setFoundGame(data.game);
       }, 'Erro ao entrar na sala');
   };
 
   const handleCancelPrivateOperations = () => {
-    if (!user) return;
-    handleApiRequest('/api/private-room/leave', { user: {id: user.id}, roomId: createdRoomCode }, () => {}, () => resetStates(), 'Erro ao cancelar');
+    handleApiRequest('/api/private-room/leave', { roomId: createdRoomCode }, () => {}, () => resetStates(), 'Erro ao cancelar');
   };
   
   const openJitsiRoom = (gameInfo: ActiveDuelInfo) => {
@@ -144,8 +140,8 @@ export default function DashboardClient() {
   };
 
   const handleReportResult = async (outcome: 'win' | 'loss' | 'draw') => {
-    if (!activeDuelInfo || !user) return;
-    await handleApiRequest( '/api/match-results/report', { gameId: activeDuelInfo.gameId, userId: user.id, outcome }, setIsSubmittingResult, () => {
+    if (!activeDuelInfo) return;
+    await handleApiRequest( '/api/match-results/report', { gameId: activeDuelInfo.gameId, outcome }, setIsSubmittingResult, () => {
         toast({ title: "Resultado enviado", description: "Aguardando oponente..." });
         setShowResultModal(false);
       }, 'Erro ao reportar resultado'
@@ -172,7 +168,7 @@ export default function DashboardClient() {
     } catch (error) { localStorage.removeItem('activeDuelInfo'); }
   }, []);
   
-  if (!user) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
+  if (status === 'loading' || !user) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
   if (foundGame) return <MatchLoadingScreen opponentDisplayName={foundGame.opponent.displayName} onProceed={() => openJitsiRoom(foundGame)} jitsiRoomName={foundGame.jitsiRoomName} />;
 
   return (

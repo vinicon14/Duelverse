@@ -1,236 +1,256 @@
 
-// src/lib/matchmakingStore.ts
+import { adminDatabase } from '@/lib/firebaseConfig';
 import type { MatchmakingQueueEntry, MatchedGame, PrivateGame, User as AuthUser, StoredMatchResult, PrivateGamePlayer } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
-/**
- * ATENÇÃO: Este é um armazenamento em memória.
- * Ele é INTENCIONALMENTE VOLÁTIL. Dados de partidas ativas, filas e chats
- * não precisam ser persistidos entre reinicializações do servidor para este protótipo.
- * Para um ambiente de produção, esta lógica precisaria ser movida para um
- * banco de dados rápido como Redis ou um banco de dados em tempo real como Firestore.
- * A persistência de USUÁRIOS agora é tratada em 'userStore.ts'.
- */
+const db = adminDatabase;
 
-declare global {
-  // Allow global `var` for these in-memory stores to prevent HMR issues
-  // eslint-disable-next-line no-var
-  var __matchmakingStores: {
-    matchmakingQueue?: MatchmakingQueueEntry[];
-    activeGames?: Map<string, MatchedGame>;
-    userGameMap?: Map<string, string>;
-    privateGames?: Map<string, PrivateGame>;
-    userPrivateGameMap?: Map<string, string>;
-    matchResults?: Map<string, StoredMatchResult>;
-    cleanupInterval?: NodeJS.Timeout;
-  } | undefined;
-}
+// --- Database References ---
+const matchmakingQueueRef = db.ref('matchmakingQueue');
+const activeGamesRef = db.ref('activeGames');
+const userGameMapRef = db.ref('userGameMap'); // Maps userId to a public gameId
+const privateGamesRef = db.ref('privateGames');
+const userPrivateGameMapRef = db.ref('userPrivateGameMap'); // Maps userId to a private roomId
+const matchResultsRef = db.ref('matchResults');
 
-// This ensures the in-memory store is not wiped out during HMR in development.
-if (!global.__matchmakingStores) {
-    global.__matchmakingStores = {
-        matchmakingQueue: [],
-        activeGames: new Map<string, MatchedGame>(),
-        userGameMap: new Map<string, string>(),
-        privateGames: new Map<string, PrivateGame>(),
-        userPrivateGameMap: new Map<string, string>(),
-        matchResults: new Map<string, StoredMatchResult>(),
-    };
-    console.log('[MatchmakingStore] Initialized new global matchmaking stores object.');
-}
+// --- Helper Functions to Interact with Realtime Database ---
 
-// --- Store Exports ---
-export const matchmakingQueue: MatchmakingQueueEntry[] = global.__matchmakingStores.matchmakingQueue!;
-export const activeGames: Map<string, MatchedGame> = global.__matchmakingStores.activeGames!;
-export const userGameMap: Map<string, string> = global.__matchmakingStores.userGameMap!;
-export const privateGames: Map<string, PrivateGame> = global.__matchmakingStores.privateGames!;
-export const userPrivateGameMap: Map<string, string> = global.__matchmakingStores.userPrivateGameMap!;
-export const matchResults: Map<string, StoredMatchResult> = global.__matchmakingStores.matchResults!;
+// Note: The logic for cleaning up stale data (e.g., old queue entries, abandoned games)
+// should be handled by a separate, scheduled process (like a Cloud Function) in a production environment.
+// For this refactoring, we focus on the core matchmaking logic.
 
-const PUBLIC_QUEUE_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
-const ACTIVE_GAME_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
-const PRIVATE_GAME_CLEANUP_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours for private rooms
-const MATCH_RESULT_CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours to report results
-
-export function cleanupQueue() {
-  const cleanupTime = Date.now() - PUBLIC_QUEUE_CLEANUP_INTERVAL;
-  const initialLength = matchmakingQueue.length;
-  for (let i = matchmakingQueue.length - 1; i >= 0; i--) {
-    if (matchmakingQueue[i].timestamp < cleanupTime) {
-      matchmakingQueue.splice(i, 1);
-    }
-  }
-  if (matchmakingQueue.length < initialLength) {
-    console.log(`[MatchmakingStore] Public queue cleanup: removed ${initialLength - matchmakingQueue.length} old entries.`);
-  }
-}
-
-export function cleanupGames() {
-  const cleanupTime = Date.now() - ACTIVE_GAME_CLEANUP_INTERVAL;
-  activeGames.forEach((game, gameId) => {
-    if (game.createdAt < cleanupTime) {
-      activeGames.delete(gameId);
-      game.players.forEach(p => userGameMap.delete(p.userId));
-      console.log(`[MatchmakingStore] Cleaned up old public game: ${gameId}`);
-    }
-  });
-}
-
-export function cleanupPrivateGames() {
-  const cleanupTime = Date.now() - PRIVATE_GAME_CLEANUP_INTERVAL;
-  privateGames.forEach((game, roomId) => {
-    if (game.createdAt < cleanupTime) {
-      privateGames.delete(roomId);
-      userPrivateGameMap.delete(game.player1.userId);
-      if (game.player2) {
-        userPrivateGameMap.delete(game.player2.userId);
-      }
-      console.log(`[MatchmakingStore] Cleaned up old private game: ${roomId}`);
-    }
-  });
-}
-
-export function cleanupMatchResults() {
-    const cleanupTime = Date.now() - MATCH_RESULT_CLEANUP_INTERVAL;
-    matchResults.forEach((result, gameId) => {
-        const gameEntry = activeGames.get(gameId) || privateGames.get(gameId);
-        if (!gameEntry || gameEntry.createdAt < cleanupTime) {
-             matchResults.delete(gameId);
-             console.log(`[MatchmakingStore] Cleaned up old/stale match result entry for game: ${gameId}`);
-        }
-    });
-}
-
-
-// --- Global Cleanup Interval ---
-if (typeof setInterval !== 'undefined' && !global.__matchmakingStores.cleanupInterval) {
-  global.__matchmakingStores.cleanupInterval = setInterval(() => {
-    cleanupQueue();
-    cleanupGames();
-    cleanupPrivateGames();
-    cleanupMatchResults();
-  }, 60 * 1000); 
-  console.log('[MatchmakingStore] Started global cleanup interval.');
-}
-
-// --- Helper for Private Rooms ---
-export function createPrivateRoom(player1: AuthUser, customRoomIdInput?: string): { success: boolean; roomId?: string; jitsiRoomName?: string; message?: string } {
+export async function createPrivateRoom(player1: AuthUser, customRoomIdInput?: string): Promise<{ success: boolean; roomId?: string; jitsiRoomName?: string; message?: string }> {
   const trimmedCustomRoomId = customRoomIdInput?.trim().toUpperCase();
-  const roomId = trimmedCustomRoomId && trimmedCustomRoomId.length > 0 
-               ? trimmedCustomRoomId 
+  const roomId = trimmedCustomRoomId && trimmedCustomRoomId.length > 0
+               ? trimmedCustomRoomId
                : uuidv4().substring(0, 6).toUpperCase();
 
-  console.log(`[MatchmakingStore] Attempting to create private room. Requested ID: "${customRoomIdInput}", Effective ID: "${roomId}" by P1: ${player1.displayName} (ID: ${player1.id})`);
+  console.log(`[RTDB-Matchmaking] Attempting to create private room. Requested ID: "${customRoomIdInput}", Effective ID: "${roomId}" by P1: ${player1.displayName} (ID: ${player1.id})`);
 
-  if (privateGames.has(roomId)) {
-    console.warn(`[MatchmakingStore] Private room creation failed: Room ID "${roomId}" already in use.`);
+  const roomRef = privateGamesRef.child(roomId);
+  const userInGameRef = userPrivateGameMapRef.child(player1.id);
+  const userInPublicGameRef = userGameMapRef.child(player1.id);
+
+  // Check if user is already in any game
+  if ((await userInGameRef.get()).exists() || (await userInPublicGameRef.get()).exists()) {
+    console.warn(`[RTDB-Matchmaking] Private room creation failed: Player ${player1.displayName} is already in a room or queue.`);
+    return { success: false, message: 'Você já está em uma sala ou na fila de pareamento público.' };
+  }
+
+  // Use a transaction to ensure atomic creation
+  const { committed, snapshot } = await roomRef.transaction((currentData) => {
+    if (currentData === null) {
+      // Room does not exist, create it
+      return {
+        roomId,
+        player1: { userId: player1.id, displayName: player1.displayName },
+        jitsiRoomName: `DuelVerse_Private_${roomId}`,
+        createdAt: Date.now(),
+      };
+    }
+    // Room already exists, abort transaction
+    return;
+  });
+
+  if (!committed) {
+    console.warn(`[RTDB-Matchmaking] Private room creation failed: Room ID "${roomId}" already in use.`);
     return { success: false, message: 'ID da sala já em uso. Tente um ID diferente ou deixe em branco para gerar um aleatório.' };
   }
-  if (userPrivateGameMap.has(player1.id) || userGameMap.has(player1.id)) {
-     console.warn(`[MatchmakingStore] Private room creation failed: Player ${player1.displayName} is already in a room or queue.`);
-     return { success: false, message: 'Você já está em uma sala ou na fila de pareamento público.' };
-  }
 
-  const jitsiRoomName = `DuelVerse_Private_${roomId}`;
-  const newPrivateGame: PrivateGame = {
-    roomId,
-    player1: { userId: player1.id, displayName: player1.displayName },
-    jitsiRoomName,
-    createdAt: Date.now(),
-  };
-
-  privateGames.set(roomId, newPrivateGame);
-  userPrivateGameMap.set(player1.id, roomId);
-  console.log(`[MatchmakingStore] Private room "${roomId}" CREATED by ${player1.displayName}. Jitsi: "${jitsiRoomName}". Current private games: ${privateGames.size}`);
-  return { success: true, roomId, jitsiRoomName };
+  // If room created successfully, map the user to the room
+  await userInGameRef.set(roomId);
+  const newPrivateGame = snapshot.val() as PrivateGame;
+  
+  console.log(`[RTDB-Matchmaking] Private room "${roomId}" CREATED by ${player1.displayName}. Jitsi: "${newPrivateGame.jitsiRoomName}".`);
+  return { success: true, roomId, jitsiRoomName: newPrivateGame.jitsiRoomName };
 }
 
-export function joinPrivateRoom(player2: AuthUser, roomIdInput: string): { success: boolean; game?: PrivateGame; message?: string } {
-  const roomId = roomIdInput.trim().toUpperCase();
-  console.log(`[MatchmakingStore] Attempting to join private room "${roomId}" by P2: ${player2.displayName} (ID: ${player2.id})`);
-  const game = privateGames.get(roomId);
+export async function joinPrivateRoom(player2: AuthUser, roomIdInput: string): Promise<{ success: boolean; game?: PrivateGame; message?: string }> {
+    const roomId = roomIdInput.trim().toUpperCase();
+    console.log(`[RTDB-Matchmaking] Attempting to join private room "${roomId}" by P2: ${player2.displayName} (ID: ${player2.id})`);
 
-  if (!game) {
-    console.warn(`[MatchmakingStore] Join private room failed: Room "${roomId}" not found.`);
-    return { success: false, message: 'Sala privada não encontrada.' };
-  }
-  if (game.player2) {
-    console.warn(`[MatchmakingStore] Join private room failed: Room "${roomId}" is full. Current P2: ${game.player2.displayName}`);
-    return { success: false, message: 'Esta sala privada já está cheia.' };
-  }
-  if (game.player1.userId === player2.id) {
-    console.warn(`[MatchmakingStore] Join private room failed: Player ${player2.displayName} cannot join their own room as P2.`);
-    return { success: false, message: 'Você não pode entrar na sua própria sala como oponente.' };
-  }
-   if (userPrivateGameMap.has(player2.id) || userGameMap.has(player2.id)) {
-     console.warn(`[MatchmakingStore] Join private room failed: Player ${player2.displayName} is already in another room or queue.`);
-     return { success: false, message: 'Você já está em uma sala ou na fila de pareamento público.' };
-  }
+    const roomRef = privateGamesRef.child(roomId);
+    const userInGameRef = userPrivateGameMapRef.child(player2.id);
+    const userInPublicGameRef = userGameMapRef.child(player2.id);
 
-  game.player2 = { userId: player2.id, displayName: player2.displayName };
-  userPrivateGameMap.set(player2.id, roomId);
-  privateGames.set(roomId, game); 
-  console.log(`[MatchmakingStore] Player ${player2.displayName} JOINED private room "${roomId}". Jitsi for this room: "${game.jitsiRoomName}". P1: ${game.player1.displayName}`);
-  return { success: true, game };
-}
-
-export function leavePrivateRoom(userId: string): { success: boolean; message: string; opponentNotified?: boolean, opponentUserId?: string } {
-    const roomId = userPrivateGameMap.get(userId);
-    console.log(`[MatchmakingStore] Attempting to leave private room by user ID: ${userId}. Found in room: ${roomId || 'none'}`);
-    if (!roomId) {
-        return { success: false, message: "Você não está em uma sala privada." };
-    }
-
-    const game = privateGames.get(roomId);
-    if (!game) {
-        userPrivateGameMap.delete(userId); 
-        console.warn(`[MatchmakingStore] User ${userId} was in userPrivateGameMap for room "${roomId}", but room not found in privateGames. Cleaned map entry.`);
-        return { success: false, message: "Sala não encontrada, mas você foi removido do rastreamento."};
-    }
-
-    let opponentUserId: string | undefined = undefined;
-    const leavingPlayerDisplayName = game.player1.userId === userId ? game.player1.displayName : game.player2?.displayName;
-
-    if (game.player1.userId === userId) { // Player 1 is leaving
-        if (game.player2) opponentUserId = game.player2.userId;
-        privateGames.delete(roomId); 
-        userPrivateGameMap.delete(userId);
-        if (game.player2) userPrivateGameMap.delete(game.player2.userId);
-        matchResults.delete(roomId);
-        console.log(`[MatchmakingStore] Player 1 (${leavingPlayerDisplayName}, ID: ${userId}) left private room "${roomId}". Room and results deleted. Current private games: ${privateGames.size}`);
-    } else if (game.player2 && game.player2.userId === userId) { // Player 2 is leaving
-        opponentUserId = game.player1.userId;
-        game.player2 = undefined; // Player 2 leaves, P1 remains
-        privateGames.set(roomId, game); 
-        userPrivateGameMap.delete(userId);
-        matchResults.delete(roomId); // Clear results if P2 leaves, as match is disrupted
-        console.log(`[MatchmakingStore] Player 2 (${leavingPlayerDisplayName}, ID: ${userId}) left private room "${roomId}". P1 (${game.player1.displayName}) is now waiting. Match results cleared. Current private games: ${privateGames.size}`);
-    } else {
-        // User was in userPrivateGameMap, but not P1 or P2 of the game. Should not happen.
-        userPrivateGameMap.delete(userId);
-        console.error(`[MatchmakingStore] Consistency error: User ${userId} in userPrivateGameMap for room "${roomId}" but not P1 or P2. Cleaned map entry.`);
-        return { success: false, message: "Erro: Você não foi encontrado na sala especificada de forma consistente." };
+    // Check if user is already in any game
+    if ((await userInGameRef.get()).exists() || (await userInPublicGameRef.get()).exists()) {
+        console.warn(`[RTDB-Matchmaking] Join private room failed: Player ${player2.displayName} is already in another room or queue.`);
+        return { success: false, message: 'Você já está em uma sala ou na fila de pareamento público.' };
     }
     
-    return { success: true, message: "Você saiu da sala privada.", opponentNotified: !!opponentUserId, opponentUserId };
+    let joinedGame: PrivateGame | undefined;
+    const { committed, snapshot } = await roomRef.transaction((currentData: PrivateGame | null) => {
+        if (currentData === null) {
+            return; // Abort, room doesn't exist
+        }
+        if (currentData.player2) {
+            return; // Abort, room is full
+        }
+        if (currentData.player1.userId === player2.id) {
+            return; // Abort, cannot join your own room
+        }
+        currentData.player2 = { userId: player2.id, displayName: player2.displayName };
+        return currentData;
+    });
+
+    if (!committed) {
+        const game = (await roomRef.get()).val();
+        if(!game) return { success: false, message: "Sala privada não encontrada." };
+        if(game.player2) return { success: false, message: "Esta sala privada já está cheia." };
+        if(game.player1.userId === player2.id) return { success: false, message: "Você não pode entrar na sua própria sala como oponente." };
+        return { success: false, message: "Não foi possível entrar na sala." }; // Generic failure
+    }
+    
+    await userInGameRef.set(roomId);
+    joinedGame = snapshot.val() as PrivateGame;
+    
+    console.log(`[RTDB-Matchmaking] Player ${player2.displayName} JOINED private room "${roomId}".`);
+    return { success: true, game: joinedGame };
 }
 
-export function createGameFromInvitation(player1: PrivateGamePlayer, player2: PrivateGamePlayer): PrivateGame {
+
+export async function leavePrivateRoom(userId: string): Promise<{ success: boolean; message: string; opponentNotified?: boolean, opponentUserId?: string }> {
+  const roomIdSnapshot = await userPrivateGameMapRef.child(userId).get();
+  const roomId = roomIdSnapshot.val();
+  
+  console.log(`[RTDB-Matchmaking] Attempting to leave private room by user ID: ${userId}. Found in room: ${roomId || 'none'}`);
+  if (!roomId) {
+    return { success: false, message: "Você não está em uma sala privada." };
+  }
+
+  const roomRef = privateGamesRef.child(roomId);
+  const gameSnapshot = await roomRef.get();
+  
+  if (!gameSnapshot.exists()) {
+    await userPrivateGameMapRef.child(userId).remove(); // Cleanup inconsistent mapping
+    return { success: false, message: "Sala não encontrada, mas seu status foi corrigido."};
+  }
+  
+  const game = gameSnapshot.val() as PrivateGame;
+  let opponentUserId: string | undefined = undefined;
+
+  if (game.player1.userId === userId) {
+    // Player 1 leaves, the entire room is destroyed.
+    if (game.player2) opponentUserId = game.player2.userId;
+    
+    await roomRef.remove();
+    await userPrivateGameMapRef.child(userId).remove();
+    if (opponentUserId) {
+      await userPrivateGameMapRef.child(opponentUserId).remove();
+    }
+    await matchResultsRef.child(roomId).remove();
+    
+    console.log(`[RTDB-Matchmaking] P1 (${game.player1.displayName}) left. Room "${roomId}" destroyed.`);
+
+  } else if (game.player2 && game.player2.userId === userId) {
+    // Player 2 leaves, the room state reverts to waiting for a P2.
+    opponentUserId = game.player1.userId;
+    
+    await roomRef.child('player2').remove();
+    await userPrivateGameMapRef.child(userId).remove();
+    await matchResultsRef.child(roomId).remove(); // Match is disrupted
+    
+    console.log(`[RTDB-Matchmaking] P2 (${game.player2.displayName}) left room "${roomId}". Room is now open again.`);
+  } else {
+    // Inconsistent state, user is mapped to a room they aren't in.
+    await userPrivateGameMapRef.child(userId).remove();
+    return { success: false, message: "Erro de consistência: Você não estava na sala designada." };
+  }
+
+  return { success: true, message: "Você saiu da sala privada.", opponentNotified: !!opponentUserId, opponentUserId };
+}
+
+export async function createGameFromInvitation(player1: PrivateGamePlayer, player2: PrivateGamePlayer): Promise<PrivateGame> {
   const gameId = uuidv4();
   const jitsiRoomName = `DuelVerse_Match_${gameId.substring(0, 8)}`;
   
   const newGame: PrivateGame = {
-    roomId: gameId, // Use gameId as roomId for consistency
+    roomId: gameId,
     player1,
     player2,
     jitsiRoomName,
     createdAt: Date.now(),
   };
 
-  privateGames.set(gameId, newGame);
-  userPrivateGameMap.set(player1.userId, gameId);
-  userPrivateGameMap.set(player2.userId, gameId);
-  console.log(`[MatchmakingStore] Game created from invitation for ${player1.displayName} vs ${player2.displayName}. Room ID: ${gameId}`);
+  const roomRef = privateGamesRef.child(gameId);
+  await roomRef.set(newGame);
+
+  // Map both users to this new game room
+  await userPrivateGameMapRef.child(player1.userId).set(gameId);
+  await userPrivateGameMapRef.child(player2.userId).set(gameId);
+  
+  console.log(`[RTDB-Matchmaking] Game created from invitation for ${player1.displayName} vs ${player2.displayName}. Room ID: ${gameId}`);
   
   return newGame;
+}
+
+// --- Public Matchmaking ---
+export async function joinMatchmakingQueue(user: AuthUser, deckId: string) {
+    const queueEntry: MatchmakingQueueEntry = {
+        userId: user.id,
+        displayName: user.displayName,
+        score: user.score || 1000,
+        deckId: deckId,
+        timestamp: Date.now()
+    };
+    await matchmakingQueueRef.child(user.id).set(queueEntry);
+}
+
+export async function leaveMatchmakingQueue(userId: string) {
+    await matchmakingQueueRef.child(userId).remove();
+}
+
+export async function findMatch() {
+    // This function would be triggered by a recurring task (e.g., Cloud Function)
+    // It scans the queue and attempts to create matches.
+    // The implementation can be complex (e.g., considering score ranges).
+    // For now, we'll keep it simple and match the first two players.
+    
+    const snapshot = await matchmakingQueueRef.orderByChild('timestamp').limitToFirst(2).get();
+    if (snapshot.numChildren() < 2) {
+        return null; // Not enough players to match
+    }
+
+    const players: MatchmakingQueueEntry[] = [];
+    snapshot.forEach(child => {
+        players.push(child.val());
+    });
+    
+    const [player1, player2] = players;
+    
+    // Create a new game
+    const gameId = uuidv4();
+    const newGame: MatchedGame = {
+        gameId,
+        players: [
+            { userId: player1.userId, displayName: player1.displayName },
+            { userId: player2.userId, displayName: player2.displayName }
+        ],
+        jitsiRoomName: `DuelVerse_Public_${gameId.substring(0,8)}`,
+        createdAt: Date.now(),
+        status: 'pending'
+    };
+
+    // Use a multi-path update to atomically create the game and remove players from queue
+    const updates: { [key: string]: any } = {};
+    updates[`/activeGames/${gameId}`] = newGame;
+    updates[`/userGameMap/${player1.userId}`] = gameId;
+    updates[`/userGameMap/${player2.userId}`] = gameId;
+    updates[`/matchmakingQueue/${player1.userId}`] = null; // Remove from queue
+    updates[`/matchmakingQueue/${player2.userId}`] = null; // Remove from queue
+
+    await db.ref().update(updates);
+
+    return newGame;
+}
+
+// --- Match Results ---
+export async function getMatchResult(gameId: string): Promise<StoredMatchResult | null> {
+    const snapshot = await matchResultsRef.child(gameId).get();
+    return snapshot.exists() ? snapshot.val() : null;
+}
+
+export async function storeMatchResult(gameId: string, result: StoredMatchResult) {
+    await matchResultsRef.child(gameId).set(result);
 }

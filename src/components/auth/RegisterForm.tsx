@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +20,9 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth as firebaseAuth } from "@/lib/firebaseConfig";
 
 const formSchema = z.object({
   username: z.string().min(3, { message: "Usuário deve ter pelo menos 3 caracteres." }),
@@ -28,8 +32,9 @@ const formSchema = z.object({
 });
 
 export default function RegisterForm() {
-  const { register } = useAuth();
+  const { register, login } = useAuth(); // Puxa ambas as funções do contexto
   const { toast } = useToast();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -45,13 +50,25 @@ export default function RegisterForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
+      // 1. Chama a API de registro para criar o usuário no Firestore/Firebase Auth
       await register(values.username, values.password, values.displayName, values.country);
-      toast({ title: "Registro bem-sucedido!", description: "Sua conta foi criada." });
+      
+      toast({ title: "Registro bem-sucedido!", description: "Fazendo login na sua nova conta..." });
+
+      // 2. Após o registro, faz o login automaticamente
+      const email = `${values.username.toLowerCase()}@duelverse.app`;
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, values.password);
+      const idToken = await userCredential.user.getIdToken();
+      await login(idToken); // Chama o login do context para criar a sessão do NextAuth
+
+      toast({ title: "Login automático!", description: "Bem-vindo ao DuelVerse!" });
+      router.push('/dashboard');
+
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Erro no Registro",
-        description: error instanceof Error ? error.message : "Ocorreu um erro desconhecido.",
+        description: error instanceof Error ? error.message : "Não foi possível criar a conta.",
       });
     } finally {
       setIsLoading(false);
@@ -106,7 +123,7 @@ export default function RegisterForm() {
                 </FormItem>
               )}
             />
-            <FormField
+             <FormField
               control={form.control}
               name="country"
               render={({ field }) => (
