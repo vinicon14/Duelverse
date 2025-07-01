@@ -7,16 +7,19 @@ export async function POST(request: NextRequest) {
     const { username, password } = await request.json();
 
     if (!username || !password) {
+      console.warn("Authentication API: Missing username or password.");
       return NextResponse.json({ message: 'Nome de usuário e senha são obrigatórios.' }, { status: 400 });
     }
 
     const user = await getUserByUsername(username);
 
     if (!user || user.passwordHash !== password) {
+      console.warn(`Authentication API: Invalid credentials for user '${username}'.`);
       return NextResponse.json({ message: 'Credenciais inválidas.' }, { status: 401 });
     }
 
     if (user.isBanned) {
+        console.warn(`Authentication API: User '${username}' is banned.`);
         return NextResponse.json({ message: 'Você foi banido.', errorCode: 'USER_BANNED' }, { status: 403 });
     }
 
@@ -34,9 +37,15 @@ export async function POST(request: NextRequest) {
       country: user.country,
     };
 
+    console.log(`Authentication API: User '${username}' authenticated successfully.`);
     return NextResponse.json({ user: safeUser }, { status: 200 });
-  } catch (error) {
-    console.error("Authentication API error:", error);
-    return NextResponse.json({ message: 'Erro interno do servidor durante a autenticação.' }, { status: 500 });
+  } catch (error: any) {
+    // Log the full error object for better debugging
+    console.error("Authentication API internal error:", error.stack || error);
+    let message = 'Erro interno do servidor durante a autenticação.';
+    if (error instanceof Error) {
+        message = error.message; // Use the error message if it's a standard Error
+    }
+    return NextResponse.json({ message }, { status: 500 });
   }
 }
