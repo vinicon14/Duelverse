@@ -2,6 +2,7 @@
 import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { User } from "@/lib/types";
+import { getUserByUsername } from "@/lib/userStore"; // Importa a função diretamente
 
 export const authConfig = {
   providers: [
@@ -15,29 +16,25 @@ export const authConfig = {
         if (!credentials?.username || !credentials.password) return null;
 
         try {
-          const authResponse = await fetch(`${process.env.NEXTAUTH_URL}/api/auth/authenticate`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              username: credentials.username,
-              password: credentials.password,
-            }),
-          });
-
-          if (!authResponse.ok) {
-            const errorData = await authResponse.json();
-            console.error("Authentication API returned an error:", errorData.message);
-            throw new Error(errorData.message || "Falha na autenticação.");
+          // Chama a função getUserByUsername diretamente
+          const user = await getUserByUsername(credentials.username as string);
+          
+          if (user && user.passwordHash === credentials.password) {
+            // Verifica se o usuário não está banido
+            if (user.isBanned) {
+              // Lança um erro específico para usuários banidos
+              throw new Error("Este usuário foi banido."); 
+            }
+            return user; // Retorna o usuário se a autenticação for bem-sucedida
           }
 
-          const data = await authResponse.json();
-          return data.user as User;
+          // Se as credenciais forem inválidas, retorna nulo
+          return null; 
 
         } catch (error: any) {
-          console.error("Error during authentication API call:", error);
-          throw new Error(error.message || "Erro ao tentar autenticar.");
+          console.error("Authorize error:", error.message);
+          // Lança o erro para que ele possa ser capturado pelo formulário de login
+          throw new Error(error.message || "Erro durante a autenticação.");
         }
       },
     }),

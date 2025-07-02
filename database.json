@@ -1,7 +1,8 @@
 {
   "users": [
+    {},
     {
-      "id": "local-1751397888636-m4gmbz2",
+      "id": "local-1751475167624-31gi1t8",
       "username": "Vinicon14",
       "displayName": "Vinicon14 ",
       "country": "Brasil",
@@ -11,12 +12,12 @@
       "profilePictureUrl": "",
       "decklistImageUrl": "",
       "friendUsernames": [],
-      "lastActiveAt": 1751397888636,
+      "lastActiveAt": 1751475167624,
       "isVerified": false,
       "isJudge": false,
       "isBanned": false,
       "isPro": false,
-      "isCoAdmin": false
+      "isCoAdmin": true
     }
   ]
 }
