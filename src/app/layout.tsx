@@ -1,18 +1,18 @@
 
-import type { Metadata, Viewport } from "next"; // Importa o tipo Viewport
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
+import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar'; // Importa o novo componente
 
 const inter = Inter({ subsets: ["latin"] });
 
-// O metadata principal permanece como antes
 export const metadata: Metadata = {
   title: "DuelVerse",
   description: "Plataforma de duelos online.",
+  manifest: "/manifest.json",
 };
 
-// CORREÇÃO: A configuração do viewport é exportada como um objeto separado
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -31,6 +31,8 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        {/* Renderiza o novo componente para registrar o Service Worker */}
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

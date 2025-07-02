@@ -1,21 +1,21 @@
 {
-  "name": "DuelVerse Remote",
+  "name": "DuelVerse",
   "short_name": "DuelVerse",
-  "description": "Remote dueling platform for Yu-Gi-Oh! players.",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#0F172A",
-  "theme_color": "#000000",
+  "description": "Plataforma de duelos online para fãs de card games.",
   "icons": [
- {
+    {
       "src": "/icon.svg",
       "sizes": "192x192",
- "type": "image/svg+xml"
+      "type": "image/svg+xml"
     },
     {
- "src": "/icon.svg",
+      "src": "/icon.svg",
       "sizes": "512x512",
- "type": "image/svg+xml"
+      "type": "image/svg+xml"
     }
-  ]
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a202c",
+  "theme_color": "#2d3748"
 }
