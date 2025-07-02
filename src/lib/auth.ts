@@ -2,7 +2,7 @@
 import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { User } from "@/lib/types";
-import { getUserByUsername } from "@/lib/userStore"; // Importa a função diretamente
+import { getUserByUsername } from "@/lib/userStore"; // Garantindo que esta importação esteja presente e correta
 
 export const authConfig = {
   providers: [
@@ -16,24 +16,19 @@ export const authConfig = {
         if (!credentials?.username || !credentials.password) return null;
 
         try {
-          // Chama a função getUserByUsername diretamente
           const user = await getUserByUsername(credentials.username as string);
           
           if (user && user.passwordHash === credentials.password) {
-            // Verifica se o usuário não está banido
             if (user.isBanned) {
-              // Lança um erro específico para usuários banidos
               throw new Error("Este usuário foi banido."); 
             }
-            return user; // Retorna o usuário se a autenticação for bem-sucedida
+            return user;
           }
 
-          // Se as credenciais forem inválidas, retorna nulo
-          return null; 
+          return null;
 
         } catch (error: any) {
           console.error("Authorize error:", error.message);
-          // Lança o erro para que ele possa ser capturado pelo formulário de login
           throw new Error(error.message || "Erro durante a autenticação.");
         }
       },

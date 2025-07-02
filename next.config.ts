@@ -10,8 +10,7 @@ const nextConfig = {
 
     return config;
   },
-  // Move allowedDevOrigins para o nível superior da configuração
-  allowedDevOrigins: ["9003-firebase-duelverse-remote-*.cloudworkstations.dev"],
+  // A propriedade 'allowedDevOrigins' foi removida, pois pode causar problemas de Service Worker.
 };
 
 export default nextConfig;
