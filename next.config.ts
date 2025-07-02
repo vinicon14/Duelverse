@@ -10,10 +10,8 @@ const nextConfig = {
 
     return config;
   },
-  // Adiciona a configuração para permitir o acesso do Firebase Studio
-  experimental: {
-    allowedDevOrigins: ["9003-firebase-duelverse-remote-*.cloudworkstations.dev"],
-  },
+  // Move allowedDevOrigins para o nível superior da configuração
+  allowedDevOrigins: ["9003-firebase-duelverse-remote-*.cloudworkstations.dev"],
 };
 
 export default nextConfig;
