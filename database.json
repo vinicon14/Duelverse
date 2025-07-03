@@ -1,23 +1,24 @@
 {
   "users": [
     {},
+    {},
     {
-      "id": "local-1751475167624-31gi1t8",
+      "id": "local-1751496739051-5n17agn",
       "username": "Vinicon14",
       "displayName": "Vinicon14 ",
       "country": "Brasil",
       "email": "vinicon14@local.app",
-      "passwordHash": "vv12122020",
+      "passwordHash": "$2b$10$v8PDnoXB3g1KFggktGGHsuRSwQSEG2CiG0rQXW3q63qfPi3tHFIai",
       "score": 1000,
       "profilePictureUrl": "",
       "decklistImageUrl": "",
       "friendUsernames": [],
-      "lastActiveAt": 1751475167624,
+      "lastActiveAt": 1751496739163,
       "isVerified": false,
       "isJudge": false,
       "isBanned": false,
       "isPro": false,
-      "isCoAdmin": true
+      "isCoAdmin": false
     }
   ]
 }

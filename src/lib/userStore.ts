@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { User } from '@/lib/types';
+import bcrypt from 'bcryptjs';
 
 // Defining the path for the local database file
 const DATABASE_PATH = path.resolve(process.cwd(), 'database.json');
@@ -76,8 +77,11 @@ export async function warmUpCache(): Promise<void> {
     await readDatabase();
 }
 
-export async function createUser(uid: string, username: string, displayName: string, country: string, passwordHash: string): Promise<User> {
+export async function createUser(uid: string, username: string, displayName: string, country: string, passwordPlain: string): Promise<User> {
   const db = await readDatabase();
+
+  const saltRounds = 10;
+  const passwordHash = await bcrypt.hash(passwordPlain, saltRounds);
 
   const newUser: User = {
     id: uid,

@@ -1,8 +1,8 @@
-
 import type { NextAuthConfig } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { User } from "@/lib/types";
-import { getUserByUsername } from "@/lib/userStore"; // Garantindo que esta importação esteja presente e correta
+import { getUserByUsername } from "@/lib/userStore";
+import bcrypt from "bcryptjs"; // Import bcryptjs
 
 export const authConfig = {
   providers: [
@@ -18,7 +18,8 @@ export const authConfig = {
         try {
           const user = await getUserByUsername(credentials.username as string);
           
-          if (user && user.passwordHash === credentials.password) {
+          // Compare the provided password with the stored hash
+          if (user && await bcrypt.compare(credentials.password as string, user.passwordHash)) {
             if (user.isBanned) {
               throw new Error("Este usuário foi banido."); 
             }

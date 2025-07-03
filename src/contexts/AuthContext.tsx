@@ -4,7 +4,8 @@
 import React, { createContext, type ReactNode, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react'; // Importa signIn e signOut *apenas* de next-auth/react
 import type { User } from '@/lib/types';
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null;
@@ -19,29 +20,49 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const { data: session, status } = useSession();
   const { toast } = useToast();
+  const router = useRouter();
   
   const loading = status === 'loading';
   const user = session?.user as User | null;
 
   const login = useCallback(async (username: string, password: string) => {
-    const result = await signIn('credentials', {
-      username,
-      password,
-      redirect: false,
-    });
+    try {
+      const result = await signIn('credentials', {
+        username,
+        password,
+        redirect: false,
+      });
 
-    if (result?.error) {
-        toast({
-            variant: "destructive",
-            title: "Erro no Login",
-            description: result.error || "Credenciais inválidas ou erro no servidor.",
-        });
-        throw new Error(result.error);
+      if (result?.error) {
+          toast({
+              variant: "destructive",
+              title: "Erro no Login",
+              description: result.error || "Credenciais inválidas ou erro no servidor.",
+          });
+          throw new Error(result.error);
+      }
+    } catch (error: any) {
+      console.error("Login error during register process:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro no Login",
+        description: error.message || "Erro ao tentar logar após o registro.",
+      });
+      throw error;
     }
   }, [toast]);
 
   const logout = useCallback(async () => {
-    await signOut({ redirect: true, redirectTo: '/login' });
+    try {
+      await signOut({ redirect: true, redirectTo: '/login' });
+    } catch (error: any) {
+      console.error("SignOut Error:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao Sair",
+        description: error.message || "Não foi possível completar o logout.",
+      });
+    }
   }, []);
 
   const register = useCallback(async (username: string, pass: string, displayName: string, country: string) => {
@@ -61,15 +82,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(data.message || 'Falha no registro.');
       }
       
-      await login(username, pass);
-      
+      router.push("/login"); // Redirect to login page
       toast({
         title: "Registro bem-sucedido!",
-        description: "Você foi registrado e logado com sucesso.",
+        description: "Redirecionando para a página de login.",
       });
 
       return data;
-  }, [toast, login]);
+  }, [toast, router]); // Remove 'login' as a dependency, add 'router'
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, register }}>

@@ -7,11 +7,13 @@ export async function POST(request: NextRequest) {
     const { username, password, displayName, country } = await request.json();
 
     if (!username || !password || !displayName || !country) {
+      console.warn("Registration API: Missing required fields.");
       return NextResponse.json({ message: 'Todos os campos são obrigatórios.' }, { status: 400 });
     }
     
     const existingUser = await getUserByUsername(username);
     if (existingUser) {
+        console.warn("Registration API: Username already exists.");
         return NextResponse.json({ message: 'Este nome de usuário já existe.' }, { status: 409 });
     }
 
@@ -19,11 +21,16 @@ export async function POST(request: NextRequest) {
 
     await createUser(uid, username, displayName, country, password);
 
+    console.log(`Registration API: User '${username}' registered successfully.`);
     return NextResponse.json({ uid: uid, message: 'Usuário registrado com sucesso localmente!' }, { status: 201 });
 
   } catch (error: any) {
-    console.error("Registration error details (local mode):", error.stack || error);
-    let message = 'Ocorreu um erro durante o registro local.';
-    return NextResponse.json({ message }, { status: 500 });
+    console.error("Registration API error details:", error.stack || error);
+    let message = 'Ocorreu um erro durante o registro local. Por favor, tente novamente.';
+    if (error instanceof Error) {
+        message = error.message; // Use the error message if it's a standard Error
+    }
+    console.error("Registration API error (full details):", error);
+    return NextResponse.json({ message: message }, { status: 500 });
   }
 }

@@ -1,3 +1,10 @@
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+})
+
 const nextConfig = {
   webpack(config) {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
@@ -10,7 +17,8 @@ const nextConfig = {
 
     return config;
   },
-  // A propriedade 'allowedDevOrigins' foi removida, pois pode causar problemas de Service Worker.
+  // Move allowedDevOrigins para o nível superior da configuração
+  allowedDevOrigins: ["9003-firebase-duelverse-remote-*.cloudworkstations.dev"],
 };
 
-export default nextConfig;
+module.exports = withPWA(nextConfig);

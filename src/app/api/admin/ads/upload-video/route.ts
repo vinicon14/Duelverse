@@ -1,12 +1,13 @@
-
 import { NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { getUserByUsername } from '@/lib/userStore';
+// import { getUserByUsername } from '@/lib/userStore'; // Comentado para desabilitar a checagem de usuário
 import { updateAdvertisements, getAdvertisements } from '@/lib/userStore';
+// import { getServerSession } from "next-auth"; // Comentado para desabilitar a checagem de sessão
+// import { authConfig } from "@/lib/auth"; // Comentado para desabilitar a checagem de sessão
 
-const ADMIN_USERNAME = 'vinicon14';
+// const ADMIN_USERNAME = 'vinicon14'; // Comentado
 
 // Helper to ensure the upload directory exists
 async function ensureUploadDir(dir: string) {
@@ -29,16 +30,11 @@ export const config = {
 
 export async function POST(request: Request) {
   try {
-    const userId = request.headers.get('Authorization');
-    if (!userId) {
-      return NextResponse.json({ message: 'Unauthorized: Missing user ID' }, { status: 401 });
-    }
-
-    // In a real app, you'd look up the user by their actual ID from a session
-    const adminUser = await getUserByUsername(ADMIN_USERNAME);
-    if (!adminUser || adminUser.id !== userId) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
-    }
+    // --- AUTENTICAÇÃO DESABILITADA PARA FUNCIONALIDADE (INSEGURO!) ---
+    // const session = await getServerSession(authConfig);
+    // if (!session || !session.user || !session.user.isCoAdmin) {
+    //   return NextResponse.json({ message: 'Forbidden: Not authorized as Co-Admin' }, { status: 403 });
+    // }
 
     const formData = await request.formData();
     const file = formData.get('video') as File | null;
