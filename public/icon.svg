@@ -1,13 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <defs>
-    <linearGradient id="iconGradient" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#7E57C2" />
-        <stop offset="100%" stopColor="#1E3A8A" />
-    </linearGradient>
-  </defs>
-  <rect width="100" height="100" rx="22" fill="url(#iconGradient)" />
-  <g transform="rotate(-15 50 50) translate(0, 2)">
-      <rect x="20" y="25" width="50" height="65" rx="8" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="2" strokeOpacity="0.5"/>
-      <rect x="30" y="15" width="50" height="65" rx="8" fill="white" fillOpacity="0.9" stroke="white" strokeWidth="2"/>
-  </g>
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+    <!-- Outer black background with rounded corners -->
+    <rect x="0" y="0" width="1024" height="1024" fill="black" rx="150"/>
+
+    <!-- Black card (behind) -->
+    <g transform="rotate(8 512 512) translate(-50 -50)">
+        <rect x="200" y="150" width="600" height="800" rx="120" fill="black"/>
+        <!-- Inner white rectangle to suggest image area -->
+        <rect x="230" y="180" width="540" height="500" rx="60" fill="white"/>
+    </g>
+
+    <!-- White card (in front) -->
+    <g transform="rotate(-8 512 512) translate(50 50)">
+        <rect x="200" y="150" width="600" height="800" rx="120" fill="white"/>
+        <!-- Inner black rectangle to suggest image area -->
+        <rect x="230" y="180" width="540" height="500" rx="60" fill="black"/>
+    </g>
 </svg>

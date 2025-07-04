@@ -1,22 +1,38 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { verify } from 'jsonwebtoken';
 import { privateGames, userPrivateGameMap } from '@/lib/matchmakingStore';
 import type { PrivateRoomStatusResponse } from '@/lib/types';
 import { getUserById } from '@/lib/userStore';
 
 export async function GET(request: NextRequest) {
+  const token = request.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return NextResponse.json({ status: 'error', message: 'Não autorizado' }, { status: 401 });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET não está definido nas variáveis de ambiente');
+    return NextResponse.json({ status: 'error', message: 'Erro de configuração do servidor.' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
   try {
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ status: 'error', message: 'Token inválido.' }, { status: 401 });
+  }
+
+  try {
+    const userId = decoded.userId; // Use userId from decoded token
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const clientRoomIdInput = searchParams.get('roomId'); 
     console.log(`[API /private-room/status] Request received. UserId: ${userId}, ClientRoomIdInput: "${clientRoomIdInput}"`);
 
-    if (!userId) {
-      console.warn("[API /private-room/status] User ID not provided.");
-      return NextResponse.json({ status: 'error', message: 'ID do usuário não fornecido.' } as PrivateRoomStatusResponse, { status: 400 });
-    }
-    
-    // Fetch user from the database
+    // Fetch user from the database - ensure user exists and is active
     const user = await getUserById(userId);
     if (!user) {
       console.warn(`[API /private-room/status] User with ID "${userId}" not found.`);
@@ -26,7 +42,6 @@ export async function GET(request: NextRequest) {
     const clientRoomId = clientRoomIdInput?.trim().toUpperCase();
     const actualRoomId = clientRoomId || userPrivateGameMap.get(userId);
     console.log(`[API /private-room/status] Effective RoomId for lookup: "${actualRoomId}" (Client provided: "${clientRoomId}", Map derived: "${userPrivateGameMap.get(userId)}")`);
-
 
     if (!actualRoomId) {
       console.log(`[API /private-room/status] User ${userId} not in any private room or no roomId provided. Status: idle.`);
@@ -50,6 +65,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ status: 'not_found', message: 'Sala privada não encontrada ou expirou.' } as PrivateRoomStatusResponse, { status: 404 });
     }
     
+    // Ensure the polling user is actually part of this game (either player1 or player2)
+    const isPlayerInRoom = game.player1.userId === userId || (game.player2 && game.player2.userId === userId);
+    if (!isPlayerInRoom) {
+        console.warn(`[API /private-room/status] User ${userId} is not part of room ${actualRoomId}. Unauthorized access attempt.`);
+        return NextResponse.json({ status: 'error', message: 'Acesso negado à esta sala.' } as PrivateRoomStatusResponse, { status: 403 });
+    }
+
     console.log(`[API /private-room/status] Game "${actualRoomId}" found. P1: ${game.player1.displayName}, P2: ${game.player2?.displayName || 'N/A'}. Jitsi: ${game.jitsiRoomName}`);
 
     const isRoomCreator = game.player1.userId === userId;

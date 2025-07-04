@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useAudioControl } from '@/contexts/AudioControlContext';
 import { Button } from '@/components/ui/button';
-import { LogIn, LogOut, UserPlus, UserCircle, Settings, Play, Pause, ShieldCheck, Crown, UserCog, Users, LifeBuoy, GitBranch, Loader2 } from 'lucide-react';
+import { LogIn, LogOut, UserPlus, UserCircle, Settings, Play, Pause, ShieldCheck, Crown, UserCog, Users, LifeBuoy, GitBranch, Loader2, Gem, Brain } from 'lucide-react';
 import { LogoIcon } from '@/components/icons/LogoIcon';
 import {
   DropdownMenu,
@@ -19,8 +19,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
-
-const ADMIN_USERNAME = 'vinicon14';
 
 function VersionDisplay() {
   const [version, setVersion] = useState<string | null>(null);
@@ -82,7 +80,6 @@ export default function SiteHeader() {
                         <AvatarImage 
                           src={user.profilePictureUrl || ''} 
                           alt={user.displayName || 'User Avatar'} 
-                          data-ai-hint="avatar person" 
                         />
                         <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
                       </Avatar>
@@ -93,24 +90,14 @@ export default function SiteHeader() {
                       <div className="flex flex-col space-y-1">
                         <div className="flex items-center flex-wrap gap-x-2">
                             <p className="text-sm font-medium leading-none font-headline">{user.displayName}</p>
-                            {(user.username === ADMIN_USERNAME || user.isCoAdmin) && (
-                                <Badge variant="outline" className="px-1.5 py-0.5 text-xs border-accent text-accent">
-                                    <UserCog className="mr-1 h-3 w-3" /> Admin
-                                </Badge>
-                            )}
-                            {user.isVerified && (
-                                <Badge variant="outline" className="px-1.5 py-0.5 text-xs border-green-500 text-green-500">
-                                    <ShieldCheck className="mr-1 h-3 w-3" /> Verificado
-                                </Badge>
-                            )}
-                            {user.isJudge && (
-                                <Badge variant="outline" className="px-1.5 py-0.5 text-xs border-yellow-500 text-yellow-600">
-                                    <Crown className="mr-1 h-3 w-3 fill-yellow-500" /> Juiz
-                                </Badge>
-                            )}
+                            {user.isVerified && <Badge variant="outline" className="border-green-500 text-green-500 flex-shrink-0"><ShieldCheck className="h-3 w-3 mr-1"/> Verificado</Badge>}
+                            {user.isPro && <Badge className="bg-purple-500 text-white flex-shrink-0"><Gem className="h-3 w-3 mr-1"/> PRO</Badge>}
+                            {user.isJudge && <Badge variant="outline" className="border-yellow-500 text-yellow-600 flex-shrink-0"><Crown className="h-3 w-3 mr-1"/> Juiz</Badge>}
+                            {user.isAdmin && <Badge variant="default" className="bg-blue-500 text-white flex-shrink-0"><UserCog className="h-3 w-3 mr-1"/> Admin</Badge>}
+                            {user.isCoAdmin && <Badge variant="default" className="bg-indigo-500 text-white flex-shrink-0"><Users className="h-3 w-3 mr-1"/> Co-Admin</Badge>}
                         </div>
                         <p className="text-xs leading-none text-muted-foreground">
-                          @{user.username}
+                          {user.email}
                         </p>
                       </div>
                     </DropdownMenuLabel>
@@ -131,11 +118,11 @@ export default function SiteHeader() {
                       <LifeBuoy className="mr-2 h-4 w-4" />
                       <span>Suporte</span>
                     </DropdownMenuItem>
-                    {(user.username === ADMIN_USERNAME || user.isCoAdmin) && (
-                      <DropdownMenuItem onClick={() => router.push('/admin')}>
-                        <UserCog className="mr-2 h-4 w-4 text-accent" />
-                        <span className="text-accent">Painel Admin</span>
-                      </DropdownMenuItem>
+                    {(user.isAdmin || user.isCoAdmin) && (
+                        <DropdownMenuItem onClick={() => router.push('/admin')}>
+                            <UserCog className="mr-2 h-4 w-4" />
+                            <span>Painel Admin</span>
+                        </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={logout} className="text-red-500 hover:!text-red-500 hover:!bg-red-500/10 focus:text-red-500 focus:bg-red-500/10">

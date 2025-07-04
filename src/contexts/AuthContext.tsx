@@ -1,99 +1,171 @@
 
 'use client';
 
-import React, { createContext, type ReactNode, useCallback } from 'react';
-import { useSession, signIn, signOut } from 'next-auth/react'; // Importa signIn e signOut *apenas* de next-auth/react
+import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import type { User } from '@/lib/types';
-import { useToast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
-  register: (username: string, pass: string, displayName: string, country: string) => Promise<any>;
+  register: (username: string, password: string, displayName: string, country: string) => Promise<void>;
+  updateUser: (updatedUser: Partial<User>) => Promise<void>;
+  refetchUser: () => Promise<void>;
+  updateProfilePicture: (dataUrl: string) => Promise<void>;
+  updateDecklistImage: (dataUrl: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const { data: session, status } = useSession();
-  const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  
-  const loading = status === 'loading';
-  const user = session?.user as User | null;
 
-  const login = useCallback(async (username: string, password: string) => {
-    try {
-      const result = await signIn('credentials', {
-        username,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-          toast({
-              variant: "destructive",
-              title: "Erro no Login",
-              description: result.error || "Credenciais inválidas ou erro no servidor.",
-          });
-          throw new Error(result.error);
+  useEffect(() => {
+    const initializeUser = async () => {
+      setLoading(true);
+      try {
+        const response = await fetch('/api/auth/session');
+        if (response.ok) {
+          const sessionUser = await response.json();
+          setUser(sessionUser);
+        } else {
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch session:', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-    } catch (error: any) {
-      console.error("Login error during register process:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro no Login",
-        description: error.message || "Erro ao tentar logar após o registro.",
-      });
-      throw error;
-    }
-  }, [toast]);
-
-  const logout = useCallback(async () => {
-    try {
-      await signOut({ redirect: true, redirectTo: '/login' });
-    } catch (error: any) {
-      console.error("SignOut Error:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro ao Sair",
-        description: error.message || "Não foi possível completar o logout.",
-      });
-    }
+    };
+    initializeUser();
   }, []);
 
-  const register = useCallback(async (username: string, pass: string, displayName: string, country: string) => {
-    const response = await fetch('/api/auth/register', {
+  const login = async (username, password) => {
+    setLoading(true);
+    try {
+      console.log('Attempting login for:', username);
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password: pass, displayName, country }),
+        body: JSON.stringify({ username, password }),
       });
+      console.log('Login API response status:', response.status);
+      if (response.ok) {
+        const loggedInUser = await response.json();
+        setUser(loggedInUser);
+        setLoading(false);
+        console.log('Login successful. Redirecting to /dashboard');
+        router.push('/dashboard');
+        return { success: true };
+      } else {
+        const errorData = await response.json();
+        console.error('Login failed with status:', response.status, 'Error:', errorData.message);
+        setLoading(false);
+        return { success: false, message: errorData.message || 'Usuário ou senha inválidos.' };
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      setLoading(false);
+      return { success: false, message: 'Erro de conexão. Tente novamente mais tarde.' };
+    }
+  };
+
+  const register = async (username: string, password: string, displayName: string, country: string) => {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, displayName, country }),
+      });
+
       const data = await response.json();
 
       if (!response.ok) {
-        toast({
-            variant: "destructive",
-            title: "Erro no Registro",
-            description: data.message || "Não foi possível completar o registro.",
-        });
         throw new Error(data.message || 'Falha no registro.');
       }
       
-      router.push("/login"); // Redirect to login page
-      toast({
-        title: "Registro bem-sucedido!",
-        description: "Redirecionando para a página de login.",
+      router.push('/login');
+    } catch (error) {
+        throw error;
+    }
+  };
+
+  const logout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setUser(null);
+    router.push('/login');
+  };
+
+  const updateUser = useCallback(async (updatedUserData: Partial<User>) => {
+    if (!user) return;
+    try {
+      const response = await fetch('/api/users/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedUserData),
       });
 
-      return data;
-  }, [toast, router]); // Remove 'login' as a dependency, add 'router'
+      if(response.ok) {
+        const updatedUser = await response.json();
+        setUser(updatedUser);
+      } else {
+        console.error("Failed to update user from server");
+      }
+    } catch (error) {
+      console.error('Failed to update user:', error);
+    }
+  }, [user]);
 
-  return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const updateProfilePicture = useCallback(async (dataUrl: string) => {
+    if (!user) throw new Error("Usuário não autenticado");
+    const response = await fetch('/api/users/update-profile-picture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Falha ao atualizar a foto de perfil");
+    }
+    const updatedUser = await response.json();
+    setUser(updatedUser);
+  }, [user]);
+
+  const updateDecklistImage = useCallback(async (dataUrl: string) => {
+    if (!user) throw new Error("Usuário não autenticado");
+    const response = await fetch('/api/users/update-decklist-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Falha ao atualizar a imagem da decklist");
+    }
+    const updatedUser = await response.json();
+    setUser(updatedUser);
+  }, [user]);
+
+  const refetchUser = useCallback(async () => {
+    if (!user) return;
+    try {
+        const response = await fetch('/api/auth/session');
+        if (response.ok) {
+            const sessionUser = await response.json();
+            setUser(sessionUser);
+        }
+    } catch (error) {
+        console.error('Failed to refetch user:', error);
+    }
+  }, [user]);
+
+
+  const value = { user, loading, login, logout, register, updateUser, refetchUser, updateProfilePicture, updateDecklistImage };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

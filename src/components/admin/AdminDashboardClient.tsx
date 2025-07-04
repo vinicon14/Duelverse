@@ -30,8 +30,6 @@ import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const ADMIN_USERNAME = 'vinicon14';
-
 const getInitials = (name: string = "") => {
   return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'DU';
 };
@@ -88,6 +86,10 @@ export default function AdminDashboardClient() {
     const [isUploadingLeftImage, setIsUploadingLeftImage] = useState(false);
     const [isUploadingRightImage, setIsUploadingRightImage] = useState(false);
 
+    const hasAdminAccess = useMemo(() => {
+        return currentUser?.isAdmin || currentUser?.isCoAdmin;
+    }, [currentUser]);
+
     const fetchAdminData = useCallback(async (isInitial: boolean = false) => {
         if (isInitial) setIsInitiallyLoading(true);
         if (!currentUser) return;
@@ -114,10 +116,10 @@ export default function AdminDashboardClient() {
     }, [currentUser, toast]);
 
     useEffect(() => {
-        if (currentUser && (currentUser.username === ADMIN_USERNAME || currentUser.isCoAdmin)) {
+        if (hasAdminAccess) {
             fetchAdminData(true);
         }
-    }, [currentUser, fetchAdminData]);
+    }, [hasAdminAccess, fetchAdminData]);
 
     const handleFileUpload = async (file: File, formDataName: string, endpoint: string, otherFormData: Record<string, string> = {}) => {
         if (!currentUser) return;
@@ -254,7 +256,7 @@ export default function AdminDashboardClient() {
     }, [users, searchTerm]);
 
     if (isInitiallyLoading || authLoading) return <AdminDashboardSkeleton />;
-    if (!currentUser || (currentUser.username !== ADMIN_USERNAME && !currentUser.isCoAdmin)) return <div className="p-8"><Card className="p-8 text-center"><ShieldAlert className="h-16 w-16 mx-auto text-destructive" /><CardTitle>Acesso Negado</CardTitle></Card></div>;
+    if (!hasAdminAccess) return <div className="p-8"><Card className="p-8 text-center"><ShieldAlert className="h-16 w-16 mx-auto text-destructive" /><CardTitle>Acesso Negado</CardTitle></Card></div>;
 
     return (
         <div className="container mx-auto px-4 py-8 space-y-8 w-full">
@@ -353,10 +355,10 @@ export default function AdminDashboardClient() {
                                         </TableCell>
                                         <TableCell className="text-center">{userToList.score}</TableCell>
                                         <TableCell className="text-center">{userToList.country}</TableCell>
-                                        <TableCell className="text-center"><Switch checked={!!userToList.isCoAdmin} onCheckedChange={() => handleToggleCoAdminStatus(userToList, { username: userToList.username, isCoAdmin: !userToList.isCoAdmin })} disabled={isUpdatingCoAdminStatus === userToList.username || userToList.username === ADMIN_USERNAME} /></TableCell>
+                                        <TableCell className="text-center"><Switch checked={!!userToList.isCoAdmin} onCheckedChange={() => handleToggleCoAdminStatus(userToList, { username: userToList.username, isCoAdmin: !userToList.isCoAdmin })} disabled={isUpdatingCoAdminStatus === userToList.username || userToList.isAdmin} /></TableCell>
                                         <TableCell className="text-center"><Switch checked={!!userToList.isPro} onCheckedChange={() => handleToggleProStatus(userToList, { username: userToList.username, isPro: !userToList.isPro })} disabled={isUpdatingProStatus === userToList.username} /></TableCell>
                                         <TableCell className="text-center"><Switch checked={!!userToList.isJudge} onCheckedChange={() => handleToggleJudgeStatus(userToList, { username: userToList.username, isJudge: !userToList.isJudge })} disabled={isUpdatingJudgeStatus === userToList.username} /></TableCell>
-                                        <TableCell className="text-center"><Button variant="destructive" size="sm" onClick={() => setUserToBan(userToList)} disabled={isBanningUser === userToList.username || userToList.isBanned || userToList.username === ADMIN_USERNAME || userToList.isCoAdmin}><Ban className="h-4 w-4" /></Button></TableCell>
+                                        <TableCell className="text-center"><Button variant="destructive" size="sm" onClick={() => setUserToBan(userToList)} disabled={isBanningUser === userToList.username || userToList.isBanned || userToList.isAdmin || userToList.isCoAdmin}><Ban className="h-4 w-4" /></Button></TableCell>
                                     </TableRow>
                                 )) : (<TableRow><TableCell colSpan={7} className="h-24 text-center">Nenhum usuário encontrado.</TableCell></TableRow>)}
                             </TableBody>

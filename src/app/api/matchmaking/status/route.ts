@@ -1,16 +1,32 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { verify } from 'jsonwebtoken';
 import { matchmakingQueue, activeGames, userGameMap } from '@/lib/matchmakingStore';
 import type { MatchmakingStatusResponse, MatchedGame, MatchmakingQueueEntry } from '@/lib/types';
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+  const token = request.cookies.get('auth_token')?.value;
 
-    if (!userId) {
-      return NextResponse.json({ status: 'error', message: 'ID do usuário não fornecido.' }, { status: 400 });
-    }
+  if (!token) {
+    return NextResponse.json({ status: 'error', message: 'Não autorizado' }, { status: 401 });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET não está definido nas variáveis de ambiente');
+    return NextResponse.json({ status: 'error', message: 'Erro de configuração do servidor.' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
+  try {
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ status: 'error', message: 'Token inválido.' }, { status: 401 });
+  }
+
+  try {
+    const userId = decoded.userId;
 
     if (userGameMap.has(userId)) {
       const gameId = userGameMap.get(userId)!;
@@ -20,8 +36,6 @@ export async function GET(request: NextRequest) {
         // Find the opponent
         const opponent = game.players.find(p => p.userId !== userId);
         
-        // This is the critical fix: create a new game object for the response
-        // that is tailored to the requesting user.
         const gameForUser = {
           gameId: game.gameId,
           jitsiRoomName: game.jitsiRoomName,
@@ -30,7 +44,6 @@ export async function GET(request: NextRequest) {
             id: opponent?.userId || 'unknown',
             displayName: opponent?.displayName || 'Oponente Desconhecido',
           },
-          // We no longer need to send the full player list
         };
 
         return NextResponse.json({ status: 'matched', game: gameForUser });

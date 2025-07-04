@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useSession } from "next-auth/react";
-import { Swords, Trophy, BookOpenText, Brain, Loader2, X, ClipboardCopy, PlusCircle, LogIn as JoinIcon, MinusCircle, Users, Gem, Dices, Eye, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth"; // Corrigido para @/hooks/useAuth
+import { Swords, Trophy, BookOpenText, Brain, Loader2, X, ClipboardCopy, PlusCircle, LogIn as JoinIcon, MinusCircle, Users, Gem, Dices, Eye, ShieldCheck, MapPin, Settings } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { PrivateRoomStatus, CreatePrivateRoomResponse, JoinPrivateRoomResponse, MatchmakingMode, JoinMatchmakingResponse, ActiveDuelInfo } from "@/lib/types";
@@ -21,8 +21,7 @@ const getInitials = (name: string = "") => {
 };
 
 export default function DashboardClient() {
-  const { data: session, status } = useSession();
-  const user = session?.user;
+  const { user } = useAuth();
   const { toast } = useToast();
   
   const [isSearching, setIsSearching] = useState<MatchmakingMode | null>(null);
@@ -100,7 +99,7 @@ export default function DashboardClient() {
 
   const handleSearchDuel = (mode: MatchmakingMode) => {
     if (!user) return;
-    handleApiRequest('/api/matchmaking/join', { mode }, () => setIsSearching(mode), (data: JoinMatchmakingResponse) => {
+    handleApiRequest('/api/matchmaking/join', { mode, userId: user.id }, () => setIsSearching(mode), (data: JoinMatchmakingResponse) => {
         if (data.status === 'matched' && data.game) { setFoundGame(data.game); } 
         else { startPolling(`/api/matchmaking/status?userId=${user.id}`, (matchData) => setFoundGame(matchData.game)); }
         toast({ title: "Buscando partida...", description: "Você foi adicionado à fila." });
@@ -108,11 +107,13 @@ export default function DashboardClient() {
   };
 
   const handleCancelSearch = () => {
-    handleApiRequest('/api/matchmaking/leave', {}, () => {}, () => resetStates(), 'Erro ao cancelar busca');
+      if (!user) return;
+    handleApiRequest('/api/matchmaking/leave', { userId: user.id }, () => {}, () => resetStates(), 'Erro ao cancelar busca');
   };
 
   const handleCreatePrivateRoom = () => {
-    handleApiRequest('/api/private-room/create', { roomId: privateRoomCode || undefined }, setIsCreatingPrivateRoom, (data: CreatePrivateRoomResponse) => {
+      if (!user) return;
+    handleApiRequest('/api/private-room/create', { roomId: privateRoomCode || undefined, userId: user.id }, setIsCreatingPrivateRoom, (data: CreatePrivateRoomResponse) => {
         setCreatedRoomCode(data.roomId);
         setPrivateRoomStatus('waiting_for_opponent');
         startPolling(`/api/private-room/status?roomId=${data.roomId}`, (matchData) => setFoundGame(matchData.game));
@@ -121,13 +122,15 @@ export default function DashboardClient() {
   };
 
   const handleJoinPrivateRoom = () => {
-    handleApiRequest('/api/private-room/join', { roomId: privateRoomCode }, setIsJoiningPrivateRoom, (data: JoinPrivateRoomResponse) => {
+      if (!user) return;
+    handleApiRequest('/api/private-room/join', { roomId: privateRoomCode, userId: user.id }, setIsJoiningPrivateRoom, (data: JoinPrivateRoomResponse) => {
         if (data.game) setFoundGame(data.game);
       }, 'Erro ao entrar na sala');
   };
 
   const handleCancelPrivateOperations = () => {
-    handleApiRequest('/api/private-room/leave', { roomId: createdRoomCode }, () => {}, () => resetStates(), 'Erro ao cancelar');
+      if (!user) return;
+    handleApiRequest('/api/private-room/leave', { roomId: createdRoomCode, userId: user.id }, () => {}, () => resetStates(), 'Erro ao cancelar');
   };
   
   const openJitsiRoom = (gameInfo: ActiveDuelInfo) => {
@@ -140,8 +143,8 @@ export default function DashboardClient() {
   };
 
   const handleReportResult = async (outcome: 'win' | 'loss' | 'draw') => {
-    if (!activeDuelInfo) return;
-    await handleApiRequest( '/api/match-results/report', { gameId: activeDuelInfo.gameId, outcome }, setIsSubmittingResult, () => {
+    if (!activeDuelInfo || !user) return;
+    await handleApiRequest( '/api/match-results/report', { gameId: activeDuelInfo.gameId, outcome, userId: user.id }, setIsSubmittingResult, () => {
         toast({ title: "Resultado enviado", description: "Aguardando oponente..." });
         setShowResultModal(false);
       }, 'Erro ao reportar resultado'
@@ -168,8 +171,8 @@ export default function DashboardClient() {
     } catch (error) { localStorage.removeItem('activeDuelInfo'); }
   }, []);
   
-  if (status === 'loading' || !user) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
-  if (foundGame) return <MatchLoadingScreen opponentDisplayName={foundGame.opponent.displayName} onProceed={() => openJitsiRoom(foundGame)} jitsiRoomName={foundGame.jitsiRoomName} />;
+  if (!user) return <div className="flex items-center justify-center h-screen"><Loader2 className="h-12 w-12 animate-spin" /></div>;
+  if (foundGame) return <MatchLoadingScreen opponentDisplayName={foundGame.players[1].displayName} onProceed={() => openJitsiRoom(foundGame)} jitsiRoomName={foundGame.jitsiRoomName} />;
 
   return (
     <div className="container mx-auto px-4 py-8 w-full space-y-8">
@@ -182,9 +185,10 @@ export default function DashboardClient() {
           </div>
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div className="flex items-center space-x-3 p-2 rounded-lg"><Trophy className="h-6 w-6 text-yellow-500" /><div><p className="text-sm font-medium text-muted-foreground">Score</p><p className="text-lg font-bold">{user.score}</p></div></div>
+          <div className="flex items-center space-x-3 p-2 rounded-lg"><Trophy className="h-6 w-6 text-yellow-500" /><div><p className="text-sm font-medium text-muted-foreground">Score</p><p className="text-lg font-bold">{user.score || 0}</p></div></div>
           <div className="flex items-center space-x-3 p-2 rounded-lg"><Users className="h-6 w-6 text-green-500" /><div><p className="text-sm font-medium text-muted-foreground">Duelistas Online</p>{isLoadingOnlineCount ? <Loader2 className="h-5 w-5 animate-spin" /> : <p className="text-lg font-bold">{onlineUsersCount ?? '...'}</p>}</div></div>
           <div className="flex items-center space-x-3 p-2 rounded-lg"><Gem className="h-6 w-6 text-purple-500" /><div><p className="text-sm font-medium text-muted-foreground">Status</p><p className={`text-lg font-bold ${user.isPro ? 'text-purple-400' : 'text-gray-400'}`}>{user.isPro ? "PRO" : "Grátis"}</p></div></div>
+          {user.country && (<div className="flex items-center space-x-3 p-2 rounded-lg"><MapPin className="h-6 w-6 text-blue-500" /><div><p className="text-sm font-medium text-muted-foreground">País</p><p className="text-lg font-bold">{user.country}</p></div></div>)}
         </CardContent>
       </Card>
       
@@ -226,7 +230,14 @@ export default function DashboardClient() {
           <Button variant="outline" asChild disabled={isAppBusy}><Link href="/friends"><Users className="mr-2 h-4 w-4" /> Amigos</Link></Button>
           <Button variant="outline" asChild disabled={isAppBusy}><Link href="/card-oracle"><BookOpenText className="mr-2 h-4 w-4" /> Oráculo de Cartas</Link></Button>
           <Button variant="outline" asChild disabled={isAppBusy}><Link href="/rules-oracle"><Brain className="mr-2 h-4 w-4" /> Oráculo de Regras</Link></Button>
-          {!user.isPro && (<Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white"><Link href="/get-pro"><Gem className="mr-2 h-4 w-4" /> Obter PRO</Link></Button>)}
+          {!user?.isPro && (<Button asChild className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white"><Link href="/get-pro"><Gem className="mr-2 h-4 w-4" /> Obter PRO</Link></Button>)}
+          {(user?.isAdmin || user?.isCoAdmin) && (
+            <Button variant="outline" asChild disabled={isAppBusy}>
+              <Link href="/admin">
+                <Settings className="mr-2 h-4 w-4" /> Painel Admin
+              </Link>
+            </Button>
+          )}
         </CardContent>
       </Card>
 

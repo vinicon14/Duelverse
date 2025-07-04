@@ -1,17 +1,31 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { verify } from 'jsonwebtoken';
 import { matchmakingQueue, userGameMap } from '@/lib/matchmakingStore';
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+  const token = request.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
   }
-  
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET não está definido nas variáveis de ambiente');
+    return NextResponse.json({ message: 'Erro de configuração do servidor' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
   try {
-    const userId = session.user.id;
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ message: 'Token inválido' }, { status: 401 });
+  }
+
+  try {
+    const userId = decoded.userId;
 
     const queueIndex = matchmakingQueue.findIndex(p => p.userId === userId);
     if (queueIndex > -1) {

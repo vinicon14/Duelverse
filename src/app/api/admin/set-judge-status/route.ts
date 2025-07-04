@@ -1,30 +1,46 @@
 
 // src/app/api/admin/set-judge-status/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { updateUser, getUserByUsername } from '@/lib/userStore';
+import { verify } from 'jsonwebtoken';
+import { updateUser, getUserById, getUserByUsername } from '@/lib/userStore';
 import type { User } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
+  const token = request.cookies.get('auth_token')?.value;
+  if (!token) {
+    return NextResponse.json({ message: 'Não autorizado' }, { status: 401 });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    return NextResponse.json({ message: 'Erro de configuração do servidor' }, { status: 500 });
+  }
+
   try {
-    // Em um aplicativo real, esta rota DEVE ser protegida e acessível apenas por administradores.
-    // Para este protótipo, não há autenticação de administrador.
+    const decoded = verify(token, secret) as { userId: string };
+    const adminUser = await getUserById(decoded.userId);
+
+    if (!adminUser || (!adminUser.isAdmin && !adminUser.isCoAdmin)) {
+      return NextResponse.json({ message: 'Acesso negado. Apenas administradores podem executar esta ação.' }, { status: 403 });
+    }
+
     const { username, isJudge } = (await request.json()) as { username: string; isJudge: boolean };
 
     if (!username || typeof isJudge !== 'boolean') {
       return NextResponse.json({ message: 'Nome de usuário e status de juiz (isJudge) são obrigatórios.' }, { status: 400 });
     }
 
-    const existingUser = await getUserByUsername(username);
-    if (!existingUser) {
+    const targetUser = await getUserByUsername(username);
+    if (!targetUser) {
       return NextResponse.json({ message: 'Usuário não encontrado.' }, { status: 404 });
     }
 
-    const updatedUser = await updateUser(username, { isJudge });
+    const updatedUser = await updateUser(targetUser.id, { isJudge });
 
     if (updatedUser) {
-      return NextResponse.json(updatedUser, { status: 200 });
+      const { password, ...safeUser } = updatedUser;
+      return NextResponse.json(safeUser, { status: 200 });
     } else {
-      // Este caso não deve ser alcançado se getUserByUsername encontrou o usuário
       return NextResponse.json({ message: 'Falha ao atualizar status de juiz.' }, { status: 500 });
     }
   } catch (error) {

@@ -1,11 +1,9 @@
-
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { getUserByUsername, updatePopupBannerAd } from '@/lib/userStore';
-
-const ADMIN_USERNAME = 'vinicon14';
+import { getUserById, updatePopupBannerAd } from '@/lib/userStore';
+import { verify } from 'jsonwebtoken';
 
 async function ensureUploadDir(dir: string) {
   try {
@@ -16,18 +14,33 @@ async function ensureUploadDir(dir: string) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const token = request.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return NextResponse.json({ message: 'Unauthorized: Missing token' }, { status: 401 });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET não está definido nas variáveis de ambiente');
+    return NextResponse.json({ message: 'Erro de configuração do servidor' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
   try {
-    const userId = request.headers.get('Authorization');
-    if (!userId) {
-      return NextResponse.json({ message: 'Unauthorized: Missing user ID' }, { status: 401 });
-    }
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ message: 'Unauthorized: Invalid token' }, { status: 401 });
+  }
 
-    const adminUser = await getUserByUsername(ADMIN_USERNAME);
-    if (!adminUser || adminUser.id !== userId) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
-    }
+  const adminUser = await getUserById(decoded.userId);
+  if (!adminUser || (!adminUser.isAdmin && !adminUser.isCoAdmin)) {
+    return NextResponse.json({ message: 'Forbidden: Not authorized as Admin or Co-Admin' }, { status: 403 });
+  }
 
+  try {
     const formData = await request.formData();
     const file = formData.get('banner') as File | null;
     const targetUrl = formData.get('targetUrl') as string | null;
@@ -52,7 +65,7 @@ export async function POST(request: Request) {
     await fs.writeFile(filePath, buffer);
 
     await updatePopupBannerAd({
-      enabled: true, // Automatically enable when a new banner is uploaded
+      enabled: true,
       imageUrl: fileUrlPath,
       targetUrl: targetUrl || '',
     });

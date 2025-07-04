@@ -1,21 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-// import { getUserByUsername } from '@/lib/userStore'; // Comentado para desabilitar a checagem de usuário
-import { updateAdvertisements, getAdvertisements } from '@/lib/userStore';
-// import { getServerSession } from "next-auth"; // Comentado para desabilitar a checagem de sessão
-// import { authConfig } from "@/lib/auth"; // Comentado para desabilitar a checagem de sessão
+import { updateAdvertisements, getAdvertisements, getUserById } from '@/lib/userStore';
+import { verify } from 'jsonwebtoken';
 
-// const ADMIN_USERNAME = 'vinicon14'; // Comentado
-
-// Helper to ensure the upload directory exists
 async function ensureUploadDir(dir: string) {
   try {
     await fs.mkdir(dir, { recursive: true });
   } catch (error) {
     console.error(`Error creating directory ${dir}:`, error);
-    // This is a server-side error, so we throw to stop the process
     throw new Error(`Failed to create upload directory.`);
   }
 }
@@ -23,19 +17,38 @@ async function ensureUploadDir(dir: string) {
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '100mb', // Increase limit to 100MB for video uploads
+      sizeLimit: '100mb',
     },
   },
 };
 
-export async function POST(request: Request) {
-  try {
-    // --- AUTENTICAÇÃO DESABILITADA PARA FUNCIONALIDADE (INSEGURO!) ---
-    // const session = await getServerSession(authConfig);
-    // if (!session || !session.user || !session.user.isCoAdmin) {
-    //   return NextResponse.json({ message: 'Forbidden: Not authorized as Co-Admin' }, { status: 403 });
-    // }
+export async function POST(request: NextRequest) {
+  const token = request.cookies.get('auth_token')?.value;
 
+  if (!token) {
+    return NextResponse.json({ message: 'Unauthorized: Missing token' }, { status: 401 });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET não está definido nas variáveis de ambiente');
+    return NextResponse.json({ message: 'Erro de configuração do servidor' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
+  try {
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ message: 'Unauthorized: Invalid token' }, { status: 401 });
+  }
+
+  const adminUser = await getUserById(decoded.userId);
+  if (!adminUser || (!adminUser.isAdmin && !adminUser.isCoAdmin)) {
+    return NextResponse.json({ message: 'Forbidden: Not authorized as Admin or Co-Admin' }, { status: 403 });
+  }
+
+  try {
     const formData = await request.formData();
     const file = formData.get('video') as File | null;
 
@@ -43,7 +56,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'No file uploaded' }, { status: 400 });
     }
 
-    // Basic validation
     if (!file.type.startsWith('video/')) {
         return NextResponse.json({ message: 'Invalid file type. Please upload a video.' }, { status: 400 });
     }
@@ -56,16 +68,14 @@ export async function POST(request: Request) {
     const filePath = path.join(videosDir, uniqueFilename);
     const fileUrlPath = `/videos/${uniqueFilename}`;
 
-    // Convert file to buffer and write to disk
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.writeFile(filePath, buffer);
 
-    // Update the database
     const currentAdConfig = await getAdvertisements();
     const newAd = {
       id: uuidv4(),
       url: fileUrlPath,
-      duration: 15, // Assuming 15s for now as per requirement
+      duration: 15,
       originalName: file.name,
     };
     

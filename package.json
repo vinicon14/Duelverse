@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 9003 -H 0.0.0.0",
+    "dev": "NEXTAUTH_SECRET=AIzaSyBkyoxtqfnt1vouIs9C_PWGTpKstrXJZ48 next dev -p 9000 -H 0.0.0.0",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
@@ -51,6 +51,7 @@
     "next": "^15.3.4",
     "next-auth": "5.0.0-beta.23",
     "next-pwa": "^5.6.0",
+    "next-themes": "^0.4.6",
     "patch-package": "^8.0.0",
     "react": "^19.1.0",
     "react-day-picker": "^9.7.0",

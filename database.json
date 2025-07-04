@@ -1,24 +1,22 @@
 {
   "users": [
-    {},
-    {},
     {
-      "id": "local-1751496739051-5n17agn",
+      "id": "local-1751633860867-h16q44l",
       "username": "Vinicon14",
       "displayName": "Vinicon14 ",
       "country": "Brasil",
-      "email": "vinicon14@local.app",
-      "passwordHash": "$2b$10$v8PDnoXB3g1KFggktGGHsuRSwQSEG2CiG0rQXW3q63qfPi3tHFIai",
+      "email": "vinicon14@duelverse",
+      "password": "vv12122020",
       "score": 1000,
       "profilePictureUrl": "",
       "decklistImageUrl": "",
       "friendUsernames": [],
-      "lastActiveAt": 1751496739163,
+      "lastActiveAt": 1751633860867,
       "isVerified": false,
       "isJudge": false,
       "isBanned": false,
       "isPro": false,
-      "isCoAdmin": false
+      "isCoAdmin": true
     }
   ]
 }

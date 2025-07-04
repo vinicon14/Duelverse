@@ -1,17 +1,33 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { verify } from 'jsonwebtoken';
 import { matchmakingQueue, activeGames, userGameMap, cleanupQueue } from '@/lib/matchmakingStore';
 import { getServerStatus, getUserById } from '@/lib/userStore';
-import type { MatchmakingQueueEntry, MatchedGame, JoinMatchmakingResponse, MatchmakingMode } from '@/lib/types';
+import type { MatchmakingQueueEntry, MatchedGame, JoinMatchmakingResponse, MatchmakingMode, User } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session || !session.user || !session.user.id) {
+  const token = request.cookies.get('auth_token')?.value;
+
+  if (!token) {
     return NextResponse.json({ status: 'error', message: 'Unauthorized' }, { status: 401 });
   }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('JWT_SECRET is not set in environment variables.');
+    return NextResponse.json({ status: 'error', message: 'Server configuration error.' }, { status: 500 });
+  }
+
+  let decoded: { userId: string };
+  try {
+    decoded = verify(token, secret) as { userId: string };
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return NextResponse.json({ status: 'error', message: 'Invalid token.' }, { status: 401 });
+  }
+
+  const userId = decoded.userId;
 
   const serverStatus = await getServerStatus();
   if (serverStatus === 'offline') {
@@ -21,7 +37,6 @@ export async function POST(request: NextRequest) {
   try {
     cleanupQueue();
     const { mode } = (await request.json()) as { mode: MatchmakingMode };
-    const userId = session.user.id;
     
     // Fetch user details from your database to ensure data is fresh
     const user = await getUserById(userId);

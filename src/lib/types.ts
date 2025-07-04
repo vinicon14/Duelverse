@@ -5,7 +5,7 @@ export interface User {
   displayName: string;
   country: string;
   email: string;
-  passwordHash: string;
+  password?: string;
   score: number;
   profilePictureUrl?: string;
   decklistImageUrl?: string;
@@ -16,6 +16,8 @@ export interface User {
   isBanned?: boolean;
   bannedAt?: number; // Timestamp when the user was banned
   isPro?: boolean;
+  proStatus?: 'pending' | 'approved' | 'rejected';
+  isAdmin?: boolean;
   isCoAdmin?: boolean;
 }
 

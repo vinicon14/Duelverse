@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ArrowLeft, Mail, CheckCircle, ClipboardCopy, Send } from 'lucide-react';
+import { Loader2, ArrowLeft, Mail, CheckCircle, ClipboardCopy, Send, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 
 const PIX_KEY = "1ec4a2dd-3a22-4db9-a69e-e69cd7219875";
@@ -81,7 +81,7 @@ export default function GetProClient() {
     <div className="container mx-auto px-4 py-8 w-full">
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center space-x-3">
-          <Mail className="h-10 w-10 text-accent" />
+          <ShieldCheck className="h-10 w-10 text-accent" />
           <div>
             <h1 className="text-3xl font-headline text-primary">Torne-se PRO</h1>
             <p className="text-lg text-muted-foreground">Siga os passos para remover os anúncios e apoiar a plataforma.</p>
